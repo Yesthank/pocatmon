@@ -5,21 +5,28 @@
 <title>포캣몬 스프라이트 갤러리</title>
 <style>
   body { margin: 0; background: #20283a; font-family: sans-serif; color: #fff; }
-  .grid { display: grid; grid-template-columns: repeat(5, 256px); gap: 8px; padding: 8px; }
-  figure { margin: 0; background: repeating-conic-gradient(#3a4560 0 25%, #2c3550 0 50%) 0 0 / 24px 24px; border-radius: 8px; }
-  img { width: 256px; height: 256px; display: block; }
-  figcaption { font-size: 13px; padding: 4px 6px; background: #111827; }
+  .grid { display: grid; grid-template-columns: repeat(10, 128px); gap: 6px; padding: 6px 8px; }
+  h2 { font-size: 13px; font-weight: normal; margin: 6px 8px 0; color: #9fb0d0; }
+  figure { margin: 0; background: repeating-conic-gradient(#3a4560 0 25%, #2c3550 0 50%) 0 0 / 16px 16px; border-radius: 6px; overflow: hidden; }
+  img { width: 128px; height: 128px; display: block; }
+  figcaption { font-size: 11px; padding: 2px 5px; background: #111827; white-space: nowrap; }
 </style>
 </head>
 <body>
+<h2>기본</h2>
 <div class="grid" id="g"></div>
+<h2>이로치</h2>
+<div class="grid" id="gs"></div>
 <script src="../js/sprites.js"></script>
 <script>
-  var ids = ['naru', 'seol', 'ssaga', 'metal', 'black'];
-  var g = document.getElementById('g');
+  var ids = ['naru', 'seol', 'ssaga', 'cheese', 'flare', 'leaf', 'zap', 'punch', 'venom', 'sand',
+    'wing', 'psy', 'moth', 'rock', 'ghost', 'dragon', 'iron', 'ribbon', 'metal', 'black'];
   window.loaded = 0; window.failed = [];
+  window.expected = ids.length + ids.filter(function (id) { return Sprites.hasShiny(id); }).length;
   [false, true].forEach(function (shiny) {
+    var g = document.getElementById(shiny ? 'gs' : 'g');
     ids.forEach(function (id) {
+      if (shiny && !Sprites.hasShiny(id)) return;  // 이로치가 없는 몬스터는 이로치 줄에서 뺀다
       var f = document.createElement('figure');
       var im = new Image();
       im.onload = function () { window.loaded++; };

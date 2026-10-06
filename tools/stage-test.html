@@ -23,7 +23,7 @@
 <script>
 (function () {
   'use strict';
-  // 쿼리: ?2d 강제 2D, ?bg=dark&p=naru&e=black, ?still 데모 생략, ?full 흑화·그림자 연출까지
+  // 쿼리: ?2d 강제 2D, ?bg=dark&p=naru&e=seol, ?still 등장까지만, ?full 흑화·그림자 연출까지, ?quick 18타입 순회 생략
   var q = new URLSearchParams(location.search);
   var arena = document.getElementById('arena');
   var logEl = document.getElementById('log');
@@ -37,71 +37,155 @@
       m.style.left = p.x + 'px'; m.style.top = p.y + 'px'; m.style.display = 'block';
     });
   }
+  var TYPES = ['normal', 'fire', 'water', 'grass', 'electric', 'ice', 'fighting', 'poison', 'ground', 'flying', 'psychic', 'bug', 'rock', 'ghost', 'dragon', 'dark', 'steel', 'fairy'];
+  var METHODS = ['setBackground', 'setFighter', 'clearFighter', 'enter', 'attack', 'hit', 'miss', 'heal', 'shield', 'freeze', 'statFx', 'faint', 'aura',
+    'transform', 'shadowRise', 'focus', 'flash', 'screenPos', 'setPaused', 'dispose', 'recall', 'throwBall', 'clearBall', 'status', 'statusTint'];
 
   var stage = Stage.create(arena, { force2d: q.has('2d') });
   window.__stage = stage;
   log('mode: ' + stage.mode);
+  METHODS.forEach(function (n) { if (typeof stage[n] !== 'function') console.error('MISSING method ' + n); });
+
+  // 모든 연출 호출은 Promise를 돌려주고 제한 시간 안에 resolve 되어야 한다
+  var calls = 0;
+  function chk(name, p, ms) {
+    calls++;
+    if (!p || typeof p.then !== 'function') { console.error('NO PROMISE ' + name); return Promise.resolve(); }
+    var hung = false;
+    return Promise.race([p.then(function () { return 'ok'; }, function (e) { console.error('REJECT ' + name + ' ' + e); return 'rej'; }),
+      wait(ms || 10000).then(function () { hung = true; return 'hang'; })])
+      .then(function (r) { if (hung || r === 'hang') console.error('HANG ' + name); });
+  }
+  window.__chk = chk;
 
   (async function () {
     var t0 = performance.now();
-    await stage.setBackground(q.get('bg') || 'dark');
+    var P = q.get('p') || 'naru', E = q.get('e') || 'seol';
+    await chk('bg', stage.setBackground(q.get('bg') || 'forest'));
     await Promise.all([
-      stage.setFighter('player', q.get('p') || 'naru', { shiny: q.has('shiny') }),
-      stage.setFighter('enemy', q.get('e') || 'black', {})
+      chk('setP', stage.setFighter('player', P, { shiny: q.has('shiny') })),
+      chk('setE', stage.setFighter('enemy', E, {}))
     ]);
-    await stage.enter('enemy');
-    await stage.enter('player');
+    await chk('enterE', stage.enter('enemy'));
+    await chk('enterP', stage.enter('player'));
     window.__entered = true;
     if (q.has('still')) { await wait(600); mark(stage); window.__done = true; return; }
 
-    await stage.attack('enemy', 'dark');
-    await stage.hit('player', { crit: true, eff: 1 });
+    await chk('atk dark', stage.attack('enemy', 'dark'));
+    await chk('hit', stage.hit('player', { crit: true, eff: 1, fx: 'dark' }));
 
     // 공격 중간 프레임 캡처 지점
-    var atk = stage.attack('player', 'water');
+    var atk = stage.attack('player', 'fire');
     setTimeout(function () { window.__mid = true; }, 330);
-    await atk;
-    await stage.hit('enemy', { crit: false, eff: 2 });
+    await chk('atk fire', atk);
+    await chk('hit fire', stage.hit('enemy', { crit: false, eff: 2, fx: 'fire' }));
     window.__midDone = true;
 
-    await stage.attack('enemy', 'steel');
-    await stage.miss('player');
-    await stage.attack('player', 'ice');
-    await stage.hit('enemy', { eff: 1 });
-    stage.freeze('enemy', true);
-    await stage.attack('enemy', 'normal');
-    await stage.hit('player', { eff: 0.5 });
-    await stage.heal('player');
+    // 18타입 전부 (플레이어 → 상대)
+    if (!q.has('quick')) {
+      for (var i = 0; i < TYPES.length; i++) {
+        var t = TYPES[i];
+        if (i === 6) await chk('bg volcano', stage.setBackground('volcano'));
+        if (i === 12) await chk('bg temple', stage.setBackground('temple'));
+        await chk('atk ' + t, stage.attack('player', t));
+        await chk('hit ' + t, stage.hit('enemy', { fx: t, eff: i % 3 === 0 ? 2 : 1 }));
+      }
+    }
+    // 반대 방향 몇 가지
+    var rev = ['electric', 'rock', 'ghost', 'psychic', 'grass'];
+    for (var j = 0; j < rev.length; j++) {
+      await chk('atkE ' + rev[j], stage.attack('enemy', rev[j]));
+      await chk('hitP ' + rev[j], stage.hit('player', { fx: rev[j], eff: 0.5 }));
+    }
+    // 특수·알 수 없는 키
+    await chk('atk heal', stage.attack('player', 'heal'));
+    await chk('atk bogus', stage.attack('player', 'bogus-type'));
+    await chk('atk undefined', stage.attack('player'));
+    await chk('hit recoil', stage.hit('player', { fx: 'recoil' }));
+    await chk('hit nofx', stage.hit('enemy'));
+    await chk('bg dark', stage.setBackground('dark'));
+
+    // 상태이상 1회 연출
+    var KINDS = ['brn', 'psn', 'tox', 'par', 'slp', 'cnf', 'frz', 'thaw', 'unknown'];
+    for (var k = 0; k < KINDS.length; k++) await chk('status ' + KINDS[k], stage.status('enemy', KINDS[k]));
+    // 지속 표시
+    var TINTS = ['brn', 'psn', 'tox', 'par', 'slp', 'frz', null, 'weird'];
+    for (var m = 0; m < TINTS.length; m++) {
+      await chk('tint ' + TINTS[m], stage.statusTint('enemy', TINTS[m]), 50);
+      await wait(350);
+    }
+    await chk('tint null', stage.statusTint('enemy', null), 50);
+    await chk('tintP brn', stage.statusTint('player', 'brn'), 50);
+    await chk('miss', stage.miss('player'));
+    await chk('heal', stage.heal('player'));
     stage.shield('enemy', true);
-    await stage.statFx('player', true);
-    await stage.statFx('enemy', false);
+    await chk('statUp', stage.statFx('player', true));
+    await chk('statDown', stage.statFx('enemy', false));
     stage.aura('enemy', '#ff2440');
-    await stage.focus('enemy');
-    await stage.focus(null);
-    await stage.flash('#ffffff');
-    stage.freeze('enemy', false);
+    await chk('focusE', stage.focus('enemy'));
+    await chk('focus0', stage.focus(null));
+    await chk('flash', stage.flash('#ffffff'));
     stage.shield('enemy', false);
     stage.aura('enemy', null);
 
+    // 교체: 들어가기 → 새 몬스터 → 등장 (상태 표시가 넘어가지 않아야 한다)
+    await chk('recallP', stage.recall('player'));
+    await chk('setP2', stage.setFighter('player', 'ssaga'));
+    await chk('enterP2', stage.enter('player'));
+    await chk('recallE', stage.recall('enemy'));
+    await chk('setE2', stage.setFighter('enemy', 'naru', { shiny: true }));
+    await chk('enterE2', stage.enter('enemy'));
+    await chk('recall none', stage.recall('nobody'));
+
+    // 포획: 3번 흔들려 성공 → 볼 남음 → 다음 상대로 바뀌며 정리
+    await chk('ball caught', stage.throwBall(3, true), 12000);
+    await wait(300);
+    await chk('setE3', stage.setFighter('enemy', 'metal'));
+    await chk('enterE3', stage.enter('enemy'));
+    // 1번 흔들리고 실패 → 상대 복귀
+    await chk('ball fail', stage.throwBall(1, false), 12000);
+    await chk('atkE after ball', stage.attack('enemy', 'steel'));
+    await chk('hitP', stage.hit('player', { fx: 'steel' }));
+    await chk('ball 0 caught', stage.throwBall(0, true), 12000);
+    await chk('clearBall', stage.clearBall(), 50);
+    await chk('setE4', stage.setFighter('enemy', 'seol'));
+    await chk('enterE4', stage.enter('enemy'));
+
+    // 새 고양이(데이터가 있으면 height 반영)
+    await chk('set cheese', stage.setFighter('enemy', 'cheese'));
+    await chk('enter cheese', stage.enter('enemy'));
+    // 데이터·그림이 모두 없는 몬스터 id → 자리표시 실루엣
+    await chk('set unknown', stage.setFighter('enemy', 'zz_nodata'));
+    await chk('enter unknown', stage.enter('enemy'));
+    await chk('atk water→unknown', stage.attack('player', 'water'));
+    await chk('hit unknown', stage.hit('enemy', { fx: 'water', eff: 2 }));
+    await chk('status unknown', stage.status('enemy', 'par'));
+    stage.screenPos('enemy');
+
     if (q.has('full')) {
-      await stage.setBackground('metal');
-      await stage.setFighter('enemy', 'metal');
-      await stage.enter('enemy');
-      await stage.faint('enemy');
-      await stage.setBackground('dark');
-      await stage.setFighter('enemy', 'metal');
-      await stage.transform('enemy', 'black', {});
-      await stage.setFighter('player', 'metal');
-      await stage.shadowRise();
-      await stage.faint('player');
+      await chk('bg metal', stage.setBackground('metal'));
+      await chk('set metal', stage.setFighter('enemy', 'metal'));
+      await chk('enter metal', stage.enter('enemy'));
+      await chk('faint metal', stage.faint('enemy'));
+      await chk('bg dark2', stage.setBackground('dark'));
+      await chk('set metal2', stage.setFighter('enemy', 'metal'));
+      await chk('transform', stage.transform('enemy', 'black', {}));
+      await chk('set Pmetal', stage.setFighter('player', 'metal'));
+      await chk('shadowRise', stage.shadowRise(), 12000);
+      await chk('faintP', stage.faint('player'));
       stage.clearFighter('player');
-      await stage.setFighter('player', q.get('p') || 'naru');
-      await stage.enter('player');
+      await chk('setP3', stage.setFighter('player', P));
+      await chk('enterP3', stage.enter('player'));
     }
+    await chk('faintE', stage.faint('enemy'));
+    await chk('clearE', stage.clearFighter('enemy'), 50);
+    await chk('setE5', stage.setFighter('enemy', E));
+    await chk('enterE5', stage.enter('enemy'));
+    stage.statusTint('player', null);
     stage.shield('player', true);
     await wait(700);
     mark(stage);
-    log('demo ' + Math.round(performance.now() - t0) + 'ms');
+    log('demo ' + Math.round(performance.now() - t0) + 'ms, calls ' + calls);
     window.__done = true;
   })().catch(function (e) { log('ERR ' + e); console.error(e); });
 })();

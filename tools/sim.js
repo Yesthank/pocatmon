@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /* 포캣몬 밸런스 시뮬레이션 — `npm run sim`
-   시작 몬스터별로 N판의 런(4연전, 한 번 지면 끝)을 결정적 난수로 돌려
-   클리어율·판별 패배 분포·평균 턴 수를 출력하고 docs/balance.md 에 남긴다.
-   모든 시작 몬스터의 클리어율이 [35%, 95%] 안이면 종료 코드 0, 아니면 1. */
+   스타터 3종마다 N번, 게임 한 판 전체(지역 6곳 수련·포획 → 관장 도전 → 정상 최종전)를 결정적 난수로 흉내 낸다.
+   관장별 첫 도전 승률, 재도전 횟수, 수련 배틀 수, 클리어율을 출력하고 docs/balance.md 에 남긴다.
+   합격 기준(아래 GATE)을 모두 만족하면 종료 코드 0, 아니면 1. */
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -10,14 +10,14 @@ const D = require('../js/data.js');
 const E = require('../js/engine.js');
 const T = D.TUNING;
 
-const N = Number(process.env.SIM_RUNS) || 1000;
+const N = Number(process.env.SIM_RUNS) || 80;
 const SEED = 20261006;
-const BAND = [0.35, 0.95];
-const STARTERS = ['naru', 'seol', 'ssaga', 'metal', 'black'];
-const MAX_TURNS = 100; // 안전 장치(넘으면 패배로 집계)
-const HEAL_BELOW = 0.35;
-const SHIELD_BELOW = 0.5;
-const SHIELD_CHANCE = 0.5;
+const MAX_TURNS = 150;          // 안전 장치(넘으면 패배로 집계)
+const GRIND_GAP = 2;            // 파티 최저 레벨이 '관장 최고 레벨 − GRIND_GAP'이 될 때까지 수련
+const GRIND_CAP = 90;           // 지역당 수련 배틀 상한
+const RETRY_GRIND = 8;          // 관장에게 지면 이만큼 더 수련하고 재도전
+const MAX_ATTEMPTS = 8;
+const GATE = { gymFirstTry: [0.30, 0.97], clear: 0.90, maxWildBattles: 260 };
 const WRITE_DOC = !process.argv.includes('--no-write');
 
 function mulberry32(a) {
@@ -25,195 +25,237 @@ function mulberry32(a) {
 }
 
 /* ── 무난한 플레이어 정책 ── */
-// 1타 기대 피해(엔진 공식, 난수 평균 0.925, 급소 무시)
-function estHit(me, foe, mv) {
-  const A = me.atk * E.stageMult(me.stages.atk);
-  const Dd = foe.def * E.stageMult(foe.stages.def);
-  const eff = E.effectiveness(mv.type, foe.types);
-  const stab = me.types.indexOf(mv.type) >= 0 ? T.stab : 1;
-  let dmg = (mv.power * (A / Dd) * T.dmgScale + 2) * eff * stab * 0.925;
-  if (foe.shield > 0) dmg *= T.shieldMult;
-  return dmg;
+function bestScore(b, idx) {
+  const keep = b.p.active, vol = b.p.vol;
+  b.p.active = idx; b.p.vol = { stages: { atk: 0, def: 0, spa: 0, spd: 0, spe: 0, acc: 0, eva: 0 }, cnf: 0, flinch: false, toxN: 0 };
+  const mon = b.p.party[idx];
+  let best = 0;
+  mon.moves.forEach((m, i) => { if (m.pp > 0 && D.MOVES[m.id].cat !== 'status') best = Math.max(best, E.estimate(b, 'p', i)); });
+  b.p.active = keep; b.p.vol = vol;
+  return best;
 }
-function playerMove(b, rng) {
-  const me = b.p, foe = b.e;
-  const ratio = me.hp / me.maxHp;
-  const moves = me.moves.map((id) => ({ id, mv: D.MOVES[id] }));
-  const attacks = moves.filter((m) => m.mv.kind === 'atk');
-  // 기대 피해 점수 = 위력 × 타수 × 명중 × 상성 × 자속 (실제 공식 기반)
-  attacks.forEach((m) => {
-    const hits = m.mv.hits ? (m.mv.hits[0] + m.mv.hits[1]) / 2 : 1;
-    m.dmg = estHit(me, foe, m.mv) * hits;
-    m.score = m.dmg * (m.mv.acc / 100);
-    if (m.mv.recoil && ratio < 0.3) m.score *= 0.5;
-  });
-  // 1) 쓰러뜨릴 수 있으면 선공기 우선, 아니면 확실한(명중 높은) 막타
-  const kos = attacks.filter((m) => m.dmg >= foe.hp);
-  if (kos.length) {
-    const pri = kos.filter((m) => m.mv.priority);
-    const pool = pri.length ? pri : kos;
-    pool.sort((a, b2) => b2.mv.acc - a.mv.acc || b2.score - a.score);
-    return pool[0].id;
+function pickReplacement(b) {
+  let best = -1, bi = E.firstAlive(b.p.party);
+  b.p.party.forEach((m, i) => { if (E.isAlive(m)) { const s = bestScore(b, i) * (0.5 + m.hp / E.maxHp(m)); if (s > best) { best = s; bi = i; } } });
+  return bi;
+}
+function playerAction(b, rng, wantCatch) {
+  const me = E.active(b, 'p'), foe = E.active(b, 'e');
+  if (wantCatch && b.kind === 'wild' && foe.hp / E.maxHp(foe) < 0.5) return { t: 'ball' };
+  const ratio = me.hp / E.maxHp(me);
+  // 상성이 나쁘면(최선 점수가 낮고 더 나은 동료가 건강하면) 교체 — 한 상대에게 한 번만
+  if (b._switchedFor !== foe.uid + ':' + b.e.active) {
+    const mine = bestScore(b, b.p.active);
+    let alt = -1, altScore = mine * 2.2;
+    b.p.party.forEach((m, i) => { if (i !== b.p.active && E.isAlive(m) && m.hp / E.maxHp(m) > 0.5) { const s = bestScore(b, i); if (s > altScore) { altScore = s; alt = i; } } });
+    if (alt >= 0 && mine < 35) { b._switchedFor = foe.uid + ':' + b.e.active; return { t: 'switch', to: alt }; }
   }
-  // 2) HP 낮으면 회복
-  const heal = moves.find((m) => m.mv.kind === 'heal');
-  if (heal && ratio < HEAL_BELOW) return heal.id;
-  // 3) HP 절반 아래이고 보호막이 없으면 가끔 보호막
-  const shield = moves.find((m) => m.mv.kind === 'shield');
-  if (shield && ratio < SHIELD_BELOW && me.shield === 0 && rng() < SHIELD_CHANCE) return shield.id;
-  // 4) 기대 피해가 가장 큰 공격
-  attacks.sort((a, b2) => b2.score - a.score);
-  return attacks[0].id;
+  const slots = me.moves.map((m, i) => i).filter((i) => me.moves[i].pp > 0);
+  if (!slots.length) return { t: 'move', slot: 0 };
+  const heal = slots.find((i) => D.MOVES[me.moves[i].id].heal);
+  if (heal != null && ratio < 0.35) return { t: 'move', slot: heal };
+  const scored = slots.map((i) => ({ i, s: E.estimate(b, 'p', i) })).sort((a, c) => c.s - a.s);
+  // 사람처럼 가끔(15%) 두 번째로 좋은 기술을 고른다
+  const pick = scored.length > 1 && rng() < 0.15 ? scored[1] : scored[0];
+  return { t: 'move', slot: pick.i };
 }
 
-/* ── 런 시뮬레이션 ── */
-function simRun(starter, rng) {
-  const run = E.createRun(starter, rng);
-  const turns = [];
-  for (;;) {
-    const b = E.createBattle(run);
-    while (!b.over && b.turn < MAX_TURNS) {
-      const pm = playerMove(b, rng);
-      const em = E.chooseEnemyMove(b, rng);
-      E.resolveTurn(b, pm, em, rng);
+function fight(b, rng, wantCatch) {
+  let turns = 0;
+  E.beginBattle(b);
+  while (!b.over && turns < MAX_TURNS) {
+    if (b.needSwitch) { E.forceSwitch(b, pickReplacement(b)); continue; }
+    E.resolveTurn(b, playerAction(b, rng, wantCatch), E.chooseEnemyAction(b, rng), rng);
+    turns++;
+  }
+  if (!b.over) { b.over = true; b.result = 'lose'; b.timeout = true; }
+  return turns;
+}
+
+// 새로 잡은 몬스터가 파티 최저 레벨보다 높거나 같으면 그 자리에 넣는다(스타터는 빼지 않는다)
+function arrangeParty(save) {
+  save.box.sort((a, c) => c.lv - a.lv);
+  for (let k = 0; k < save.box.length; k++) {
+    const cand = save.box[k];
+    let low = -1;
+    save.party.forEach((m, i) => { if (i > 0 && (low < 0 || m.lv < save.party[low].lv)) low = i; });
+    if (save.party.length < T.partyMax) { E.moveToParty(save, k); k--; continue; }
+    if (low > 0 && cand.lv > save.party[low].lv + 1 && !save.party.some((m) => m.id === cand.id)) E.swapPartyBox(save, low, k);
+  }
+}
+
+// 상대 팀에 대한 상성 점수: 내 타입으로 찌르는 배율 − 상대 타입에 찔리는 배율의 절반
+function matchup(mon, team) {
+  const mt = D.MONSTERS[mon.id].types;
+  return team.reduce((acc, [id]) => {
+    const tt = D.MONSTERS[id].types;
+    const atk = Math.max.apply(null, mt.map((t) => E.effectiveness(t, tt)));
+    const def = Math.max.apply(null, tt.map((t) => E.effectiveness(t, mt)));
+    return acc + atk - def * 0.5;
+  }, 0);
+}
+// 관장에게 지면: 보관함에서 상성이 더 좋은 몬스터를 꺼내 상성이 가장 나쁜 파티원(스타터 포함)과 바꾼다
+function counterPick(save, team) {
+  if (!save.box.length) return;
+  let worst = 0;
+  save.party.forEach((m, i) => { if (matchup(m, team) < matchup(save.party[worst], team)) worst = i; });
+  let best = -1;
+  save.box.forEach((m, k) => { if (matchup(m, team) > matchup(save.party[worst], team) + 1 && (best < 0 || matchup(m, team) > matchup(save.box[best], team))) best = k; });
+  if (best >= 0) { E.swapPartyBox(save, worst, best); E.makeLead(save, worst); }
+}
+
+function playthrough(starter, rng) {
+  const save = E.newGame(starter, rng);
+  const stat = { gyms: [], wild: 0, turns: 0, cleared: false, timeouts: 0, caught: 0 };
+  for (const area of D.AREAS) {
+    if (area.post) continue;
+    const ace = Math.max.apply(null, area.gym.team.map((t) => t[1]));
+    const target = ace - GRIND_GAP;
+    const g = { id: area.id, attempts: 0, firstWin: false, won: false, lvAtFirst: 0, wildHere: 0 };
+    const grind = (limit) => {
+      for (let k = 0; k < limit; k++) {
+        if (area.wild == null) return;
+        if (Math.min.apply(null, save.party.map((m) => m.lv)) >= target && limit === GRIND_CAP) return;
+        E.healParty(save);
+        const b = E.createWildBattle(save, area.id, rng);
+        const sp = b.e.party[0].id;
+        const wantCatch = !save.dex.caught[sp];
+        stat.turns += fight(b, rng, wantCatch);
+        if (b.timeout) stat.timeouts++;
+        const out = E.finishBattle(save, b);
+        if (out.caughtTo) { stat.caught++; arrangeParty(save); }
+        stat.wild++; g.wildHere++;
+      }
+    };
+    // 정상(최종전)에는 야생이 없으므로 직전 지역에서 수련한다
+    const grindArea = area.wild ? area : D.AREAS[D.AREAS.indexOf(area) - 1];
+    const grindIn = (limit) => {
+      const saved = area.wild;
+      if (!saved) { area.wild = grindArea.wild; area.lv = grindArea.lv; }
+      grind(limit);
+      if (!saved) { delete area.wild; delete area.lv; }
+    };
+    grindIn(GRIND_CAP);
+    while (g.attempts < MAX_ATTEMPTS && !g.won) {
+      if (g.attempts > 0) {
+        if (g.attempts === 1) counterPick(save, area.gym.team);
+        grindIn(RETRY_GRIND);
+      }
+      E.healParty(save);
+      if (g.attempts === 0) g.lvAtFirst = save.party.reduce((a, m) => a + m.lv, 0) / save.party.length;
+      const b = E.createGymBattle(save, area.id, rng);
+      stat.turns += fight(b, rng, false);
+      if (b.timeout) stat.timeouts++;
+      E.finishBattle(save, b);
+      g.attempts++;
+      if (b.result === 'win') { g.won = true; if (g.attempts === 1) g.firstWin = true; }
     }
-    turns.push(b.turn);
-    if (b.winner !== 'player') return { cleared: false, lostAt: run.stage, turns, timeout: !b.over };
-    if (E.winBattle(run) === 'cleared') return { cleared: true, lostAt: -1, turns, timeout: false };
+    stat.gyms.push(g);
+    if (!g.won) return stat;
   }
+  stat.cleared = true;
+  stat.finalLv = save.party.map((m) => m.lv);
+  return stat;
 }
 
-function simStarter(starter, idx) {
-  const rng = mulberry32(SEED + idx * 7919);
-  const r = { starter, clears: 0, lost: [0, 0, 0, 0], turnSum: 0, battles: 0, timeouts: 0 };
-  for (let i = 0; i < N; i++) {
-    const o = simRun(starter, rng);
-    if (o.cleared) r.clears++; else r.lost[o.lostAt]++;
-    if (o.timeout) r.timeouts++;
-    o.turns.forEach((t) => { r.turnSum += t; r.battles++; });
-  }
-  r.rate = r.clears / N;
-  r.avgTurns = r.turnSum / r.battles;
-  r.ok = r.rate >= BAND[0] && r.rate <= BAND[1];
-  return r;
-}
-
-const pct = (x) => (x * 100).toFixed(1) + '%';
-if (require.main !== module) {
-  module.exports = { simStarter, simRun, playerMove, STARTERS };
-  return;
-}
-const results = STARTERS.map(simStarter);
-
-/* ── 콘솔 표 ── */
-const pad = (s, n) => String(s).padEnd(n);
-console.log(`포캣몬 밸런스 시뮬레이션 (시작 몬스터별 ${N}런, seed ${SEED})`);
-console.log(pad('starter', 9) + pad('clear', 9) + pad('lost@1', 8) + pad('lost@2', 8) + pad('lost@3', 8) + pad('lost@4', 8) + pad('turns', 7) + 'band');
-results.forEach((r) => {
-  console.log(pad(r.starter, 9) + pad(pct(r.rate), 9) + r.lost.map((x) => pad(x, 8)).join('') + pad(r.avgTurns.toFixed(2), 7) + (r.ok ? 'OK' : 'FAIL') + (r.timeouts ? ` (timeout ${r.timeouts})` : ''));
+/* ── 실행 ── */
+const t0 = Date.now();
+const results = D.STARTERS.map((starter, si) => {
+  const rng = mulberry32(SEED + si * 7919);
+  const runs = [];
+  for (let n = 0; n < N; n++) runs.push(playthrough(starter, rng));
+  return { starter, runs };
 });
-const allOk = results.every((r) => r.ok);
-console.log(allOk ? 'RESULT: GREEN — 모든 시작 몬스터가 35~95% 안' : 'RESULT: RED — 범위를 벗어난 시작 몬스터가 있음');
+const gymIds = D.AREAS.filter((a) => !a.post).map((a) => a.id);
+const pct = (x) => (x * 100).toFixed(1) + '%';
+const avg = (arr) => arr.length ? arr.reduce((a, c) => a + c, 0) / arr.length : 0;
 
-/* ── docs/balance.md ── */
-// 조정 기록(사람이 관리). 수치를 다시 바꾸면 여기에 이유와 함께 덧붙인다.
-const TUNING_LOG = `## 조정 기록 (T5, 2026-10-06)
+const gymTable = gymIds.map((id) => {
+  const row = { id, perStarter: {} };
+  let firstAll = [], attemptsAll = [];
+  results.forEach((r) => {
+    const gs = r.runs.map((s) => s.gyms.find((g) => g.id === id)).filter(Boolean);
+    const first = gs.length ? gs.filter((g) => g.firstWin).length / gs.length : 0;
+    row.perStarter[r.starter] = { first, n: gs.length, lv: avg(gs.map((g) => g.lvAtFirst)), attempts: avg(gs.map((g) => g.attempts)) };
+    firstAll = firstAll.concat(gs.map((g) => (g.firstWin ? 1 : 0)));
+    attemptsAll = attemptsAll.concat(gs.map((g) => g.attempts));
+  });
+  row.first = avg(firstAll); row.attempts = avg(attemptsAll);
+  row.ok = row.first >= GATE.gymFirstTry[0] && row.first <= GATE.gymFirstTry[1];
+  return row;
+});
+const starterTable = results.map((r) => {
+  const clear = r.runs.filter((s) => s.cleared).length / r.runs.length;
+  const wild = avg(r.runs.map((s) => s.wild));
+  return {
+    starter: r.starter, clear, wild, turns: avg(r.runs.map((s) => s.turns)), caught: avg(r.runs.map((s) => s.caught)),
+    timeouts: r.runs.reduce((a, s) => a + s.timeouts, 0),
+    ok: clear >= GATE.clear && wild <= GATE.maxWildBattles
+  };
+});
+const allOk = gymTable.every((g) => g.ok) && starterTable.every((s) => s.ok);
 
-조정 전 결과(같은 정책·seed, ${'`'}--no-write${'`'})는 나루냥 12.6% · 설냥이 0.0% · 싸가지냥 0.0% · 메탈가디언몬 60.9% · 블랙 메탈가디언몬 85.5%, 평균 1.7~2.0턴/배틀로 실패였다.
-
-원인:
-- 피해가 너무 커서(초기 dmgScale 0.42) 자속·약점이 겹치면 배틀이 한두 방에 끝났다. 회복·보호막을 쓸 틈이 없었고, 상성이 곧바로 승패를 결정했다.
-- 고양이 셋은 기본 능력치 합이 메탈·블랙보다 낮은데, 고양이로 시작하면 3·4판에서 반드시 두 강철 몬스터를 만난다. 강철 기술은 얼음·악(싸가지냥)의 약점을 찌르므로 설냥이·싸가지냥은 3판에서 거의 다 졌다.
-- 상대 강화(enemyMult)가 레벨업(×1.08)과 비슷한 폭으로 올라서 연승해도 유리해지지 않았다.
-
-조정 방향: 배틀을 3~5턴으로 늘려 판단(회복·보호막·선공 막타)이 의미를 갖게 했고, 승리할수록 확실히 강해지도록(레벨업 ×1.15) 했다. 상성 표·기술 종류·효과 종류·런 구조, 그리고 패배하면 처음부터 다시 하는 규칙은 바꾸지 않았다. 고양이는 체력·방어를 올리고, 메탈·블랙은 공격을 내려 "단단하지만 한 방이 덜 아픈" 보스로 바꿨다.
-
-| 항목 | 전 | 후 | 이유 |
-|---|---|---|---|
-| TUNING.dmgScale | 0.42 | 0.30 | 배틀 길이 1.9턴 → 3.4~4.6턴 |
-| TUNING.levelGrowth | 1.08 | 1.15 | 승리 보상을 체감할 수 있게 하고, 후반 강철 보스를 이길 힘을 줌 |
-| TUNING.enemyMult | [1.0, 1.05, 1.10, 1.20] | [0.90, 0.95, 0.95, 1.15] | 첫 판 상성 불리(나루냥→설냥이, 설냥이→싸가지냥)도 해볼 만하게, 보스 판만 확실히 강하게 |
-| 나루냥 HP/공/방/스 | 95/58/55/88 | 118/60/72/88 | 첫 판 설냥이(얼음 약점)에 지나치게 약함 |
-| 설냥이 HP/공/방/스 | 92/60/60/78 | 115/60/72/84 | 싸가지냥·메탈·블랙 모두에게 약점을 찔림 |
-| 싸가지냥 HP/공/방/스 | 86/68/48/98 | 100/52/58/90 | 고양이 상대로는 너무 세고(첫 두 판 ~95% 승), 강철 상대로는 지나치게 약함 → 공격을 낮추고 내구를 올림 |
-| 메탈가디언몬 HP/공/방/스 | 118/72/80/62 | 146/58/78/64 | 단단한 수호자로 바꾸고, 고양이 런에서 3판 난도를 낮춤 |
-| 블랙 메탈가디언몬 HP/공/방/스 | 128/84/74/72 | 116/64/84/74 | 플레이어로 쓰면 85%+로 너무 쉬웠고 보스로는 너무 셈 |
-| 얼음뭉치 위력 | 50 | 55 | 설냥이 기본 화력 보강 |
-| 눈보라 위력 | 70 | 65 | 얼림 20% 기술의 기대값 정리 |
-| 프리즈빔 얼림 확률 | 30% | 35% | 설냥이가 강철 보스를 이기는 수단(설명 문구도 35%로 수정) |
-| 냥펀치 위력 | 60 | 55 | 싸가지냥 고양이전 과강 완화 |
-| 메탈 임팩트 위력 | 85 | 70 | 강철에 약한 타입(얼음·악)이 받는 한 방 피해가 너무 큼 |
-| 다크 메탈 슬래시 위력 | 75 | 60 | 고급소와 겹쳐 순간 피해가 과함 |
-| 데스 임팩트 위력 | 110 | 100 | 보스 블랙이 주는 한 방 피해 완화 |
-
-조정은 별도 seed의 시뮬레이션으로 수치를 탐색한 뒤, 보기 좋은 값으로 반올림하고 이 문서의 seed로 다시 검증했다. 다른 seed 두 개(각 5000런)로 교차 확인해도 모든 몬스터가 46~73% 안에 있었다.
-
-## 조정 기록 (밸런스 패치 1, 2026-10-06)
-
-패치 전에는 클리어율이 48.6~74.3%로 벌어져 있었다. 싸가지냥(74.3%)·블랙(70.6%)이 쉬웠고, 최종 보스 블랙의 최대 HP(116 × 1.15 = 133)가 3판 메탈가디언몬(146 × 0.95 = 139)보다 낮아 보스다운 위압감이 없었다. 블랙은 보스이면서 플레이어 캐릭터이기도 해서, 기본 HP를 올리면 플레이어 블랙이 95% 가까이 쉬워졌다.
-
-조정 방향은 세 가지다.
-- 최종 보스 판에만 걸리는 체력 배율 bossHpMult를 새로 두어, 보스 체력과 플레이어로 고를 때의 세기를 분리했다.
-- 판별 배율의 기울기를 바꿔 앞 판은 쉽게, 3·4판은 어렵게 했다. 늑대 두 종은 공격을 낮춰 플레이어로 고를 때 덜 쉽게 만들고, 상대로 나올 때의 세기는 판별 배율로 되돌렸다.
-- 강철 상대에게 약한 설냥이는 체력·방어를 올렸다.
-
-| 항목 | 전 | 후 | 이유 |
-|---|---|---|---|
-| TUNING.enemyMult | [0.90, 0.95, 0.95, 1.15] | [0.82, 0.90, 1.08, 1.12] | 1·2판은 쉽게, 3·4판은 어렵게 |
-| TUNING.bossHpMult | 없음 | 1.45 | 최종 보스 블랙 HP 133 → 188(3판 메탈 147보다 확실히 높음) |
-| 설냥이 HP/방어 | 115/72 | 128/80 | 3·4판 강철 상대 생존력 보강 |
-| 싸가지냥 HP | 100 | 94 | 클리어율 74% → 60% |
-| 메탈가디언몬 HP/공격 | 146/58 | 136/52 | 플레이어 메탈이 앞 판만 넘기면 지나치게 쉬움 |
-| 블랙 메탈가디언몬 공격 | 64 | 58 | 플레이어 블랙이 지나치게 쉬움(보스 세기는 배율로 보정) |
-
-결과적으로 클리어율은 47.6~59.5%로 좁혀졌다. 블랙으로 시작하는 런은 최종 보스(빛의 메탈가디언몬)에게 지는 비율이 가장 높아졌다. 나루냥은 상성상 설냥이(얼음)에게 약해 1·2판 패배가 여전히 많지만, 강철 보스 둘에게는 강하다. 이 구조는 상성표에서 나오는 특성이라 그대로 두었다.`;
+console.log(`포캣몬 밸런스 시뮬레이션 — 스타터별 ${N}회, seed ${SEED} (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+console.log('관장별 첫 도전 승률 (스타터별) / 평균 시도 / 첫 도전 때 파티 평균 레벨');
+gymTable.forEach((g) => {
+  console.log(`  ${g.id.padEnd(8)} ${pct(g.first).padStart(6)}  ` + D.STARTERS.map((s) => `${s}:${pct(g.perStarter[s].first)} Lv${g.perStarter[s].lv.toFixed(1)}`).join('  ') + `  시도 ${g.attempts.toFixed(2)} ${g.ok ? 'OK' : 'NG'}`);
+});
+starterTable.forEach((s) => {
+  console.log(`  ${s.starter.padEnd(6)} 클리어 ${pct(s.clear)}  수련 배틀 ${s.wild.toFixed(0)}  포획 ${s.caught.toFixed(1)}  총 턴 ${s.turns.toFixed(0)}  시간초과 ${s.timeouts} ${s.ok ? 'OK' : 'NG'}`);
+});
+console.log(allOk ? 'PASS' : 'FAIL');
 
 if (WRITE_DOC) {
   const name = (id) => D.MONSTERS[id].name;
-  const lines = [];
-  lines.push('# 포캣몬 배틀 밸런스 시뮬레이션');
-  lines.push('');
-  lines.push('`npm run sim` (tools/sim.js)이 이 문서를 다시 만든다. 수치는 결정적 난수(seed 고정)로 재현된다.');
-  lines.push('');
-  lines.push('## 방법');
-  lines.push('');
-  lines.push(`- 시작 몬스터 5종마다 런을 ${N}판씩 돌린다. 난수는 mulberry32를 쓰고, seed는 ${SEED}이다(몬스터별 오프셋은 고정).`);
-  lines.push('- 런은 4연전이다(고양이 2~3마리 → 최종 보스). 승리하면 체력을 전부 회복하고 레벨이 오르며(능력치 ×levelGrowth), **한 번 지면 런이 끝난다**(처음부터 다시).');
-  lines.push('- 엔진은 게임과 같은 `js/engine.js`(createRun · createBattle · resolveTurn · chooseEnemyMove · winBattle)를 그대로 쓴다.');
-  lines.push(`- 한 배틀이 ${MAX_TURNS}턴을 넘으면 패배로 집계한다(안전 장치이며, 이번 실행에서는 ${results.reduce((a, r) => a + r.timeouts, 0)}건).`);
-  lines.push('- 합격 기준: 모든 시작 몬스터의 클리어율이 35% 이상 95% 이하.');
-  lines.push('');
-  lines.push('## 플레이어 정책 ("무난한 플레이")');
-  lines.push('');
-  lines.push('1. 이번 턴에 상대를 쓰러뜨릴 수 있는 공격이 있으면 그것을 쓴다. 선공기가 있으면 선공기를 우선한다.');
-  lines.push(`2. 체력이 ${HEAL_BELOW * 100}% 미만이고 회복기가 있으면 회복한다.`);
-  lines.push(`3. 체력이 ${SHIELD_BELOW * 100}% 미만이고 보호막이 없으면 ${SHIELD_CHANCE * 100}% 확률로 보호막을 친다.`);
-  lines.push('4. 그 밖에는 기대 피해(위력 × 타수 × 명중 × 상성 × 자속, 실제 피해 공식과 능력 단계 반영)가 가장 큰 공격을 쓴다. 체력이 30% 미만이면 반동기 점수를 절반으로 낮춘다.');
-  lines.push('');
-  lines.push('상대는 게임과 같은 `PEngine.chooseEnemyMove`(점수 제곱 가중 무작위)를 쓴다.');
-  lines.push('');
-  lines.push('## 결과');
-  lines.push('');
-  lines.push('| 시작 몬스터 | 클리어율 | 1판 패배 | 2판 패배 | 3판 패배 | 4판(보스) 패배 | 평균 턴/배틀 | 판정 |');
-  lines.push('|---|---:|---:|---:|---:|---:|---:|---|');
-  results.forEach((r) => {
-    lines.push(`| ${name(r.starter)} (${r.starter}) | ${pct(r.rate)} | ${r.lost[0]} | ${r.lost[1]} | ${r.lost[2]} | ${r.lost[3]} | ${r.avgTurns.toFixed(2)} | ${r.ok ? '통과' : '실패'} |`);
+  const L = [];
+  L.push('# 포캣몬 배틀 밸런스 시뮬레이션');
+  L.push('');
+  L.push('`npm run sim` (tools/sim.js)이 이 문서를 다시 만든다. 수치는 결정적 난수(seed 고정)로 재현된다.');
+  L.push('');
+  L.push('## 방법');
+  L.push('');
+  L.push(`- 스타터 3종마다 게임 한 판 전체를 ${N}번 흉내 낸다. 난수는 mulberry32, seed ${SEED}(스타터별 오프셋 고정)이다.`);
+  L.push(`- 지역마다 파티 최저 레벨이 '관장 최고 레벨 − ${GRIND_GAP}'이 될 때까지 야생 배틀로 수련한다(지역당 최대 ${GRIND_CAP}번). 배틀마다 센터에서 회복한다.`);
+  L.push('- 처음 보는 종이면 상대 체력이 절반 아래로 떨어진 뒤 포캣볼을 던진다. 잡은 몬스터가 파티 최저 레벨보다 2 이상 높고 새 종이면 파티에 넣는다(스타터는 빼지 않는다).');
+  L.push(`- 관장에게 지면 ${RETRY_GRIND}번 더 수련하고 재도전한다(최대 ${MAX_ATTEMPTS}번). 정상 최종전 수련은 별빛 신전에서 한다.`);
+  L.push('- 엔진은 게임과 같은 `js/engine.js`를 그대로 쓰고, 상대는 `chooseEnemyAction`(야생은 무작위, 관장은 점수 제곱 가중 무작위)을 쓴다.');
+  L.push('');
+  L.push('## 플레이어 정책 ("무난한 플레이")');
+  L.push('');
+  L.push('1. 체력이 35% 미만이고 회복기가 있으면 회복한다.');
+  L.push('2. 지금 몬스터의 최선 기대 피해가 낮고(35점 미만), 체력이 절반 넘게 남은 동료가 2.2배 이상 유리하면 교체한다(상대 하나에 한 번).');
+  L.push('3. 그 밖에는 `PEngine.estimate` 점수가 가장 높은 기술을 쓰고, 15% 확률로 두 번째 기술을 쓴다(사람의 실수).');
+  L.push('4. 쓰러지면 상대에게 가장 유리한 동료를 내보낸다.');
+  L.push('5. 관장에게 처음 지면, 보관함에서 그 관장 팀에 상성이 더 좋은 몬스터를 꺼내 상성이 가장 나쁜 파티원(스타터 포함)과 바꾸고, 그 몬스터를 앞세워 수련한다.');
+  L.push('');
+  L.push('## 관장별 첫 도전 승률');
+  L.push('');
+  L.push('| 관장 | 전체 | ' + D.STARTERS.map(name).join(' | ') + ' | 평균 시도 | 판정 |');
+  L.push('|---|---:|' + D.STARTERS.map(() => '---:').join('|') + '|---:|---|');
+  gymTable.forEach((g) => {
+    const a = D.AREAS.find((x) => x.id === g.id);
+    L.push(`| ${a.gym.name} (${a.name}) | ${pct(g.first)} | ` + D.STARTERS.map((s) => `${pct(g.perStarter[s].first)} (Lv${g.perStarter[s].lv.toFixed(1)})`).join(' | ') + ` | ${g.attempts.toFixed(2)} | ${g.ok ? '통과' : '실패'} |`);
   });
-  lines.push('');
-  lines.push(`패배 수는 ${N}런 가운데 해당 판에서 진 런의 수다. 고양이로 시작하면 3판 상대가 메탈가디언몬, 4판 상대가 블랙 메탈가디언몬이다. 메탈가디언몬으로 시작하면 4판 상대가 블랙 메탈가디언몬이고, 블랙 메탈가디언몬으로 시작하면 4판 상대가 메탈가디언몬이다.`);
-  lines.push('');
-  lines.push(`종합: ${allOk ? '**통과**: 모든 시작 몬스터가 35~95% 범위 안에 있다.' : '**실패**: 범위를 벗어난 시작 몬스터가 있다.'}`);
-  lines.push('');
-  lines.push('## 현재 조정값 (js/data.js TUNING)');
-  lines.push('');
-  lines.push(`- dmgScale ${T.dmgScale}, stab ${T.stab}, levelGrowth ${T.levelGrowth}, enemyMult [${T.enemyMult.join(', ')}]`);
-  lines.push(`- 보호막 ${T.shieldTurns}턴 × 피해 ${T.shieldMult}, 급소 ${(T.crit * 100).toFixed(2)}% / 고급소 ${T.highCrit * 100}% × ${T.critMult}`);
-  lines.push('- 기본 능력치: ' + STARTERS.map((id) => { const s = D.MONSTERS[id].base; return `${name(id)} HP${s.hp}/공${s.atk}/방${s.def}/스${s.spd}`; }).join(', '));
-  lines.push('');
-  if (TUNING_LOG) { lines.push(TUNING_LOG); lines.push(''); }
+  L.push('');
+  L.push('괄호 안은 첫 도전 때 파티 평균 레벨이다.');
+  L.push('');
+  L.push('## 스타터별 한 판');
+  L.push('');
+  L.push('| 스타터 | 클리어율 | 수련 배틀(평균) | 포획(평균) | 총 턴(평균) | 시간 초과 | 판정 |');
+  L.push('|---|---:|---:|---:|---:|---:|---|');
+  starterTable.forEach((s) => L.push(`| ${name(s.starter)} | ${pct(s.clear)} | ${s.wild.toFixed(0)} | ${s.caught.toFixed(1)} | ${s.turns.toFixed(0)} | ${s.timeouts} | ${s.ok ? '통과' : '실패'} |`));
+  L.push('');
+  L.push(`합격 기준: 관장마다 첫 도전 승률 ${pct(GATE.gymFirstTry[0])}~${pct(GATE.gymFirstTry[1])}, 스타터마다 클리어율 ${pct(GATE.clear)} 이상, 수련 배틀 평균 ${GATE.maxWildBattles}번 이하.`);
+  L.push('');
+  L.push(`종합: ${allOk ? '**통과**' : '**실패**'}`);
+  L.push('');
+  L.push('## 현재 조정값 (js/data.js TUNING)');
+  L.push('');
+  L.push(`- 경험치 배율 ${T.expMult}, 대기 몬스터 경험치 ${T.expShare}, 트레이너 ×${T.trainerExp}, 포캣볼 보정 ×${T.ballBonus}`);
+  L.push(`- 급소 ${(T.critRate * 100).toFixed(2)}% / 고급소 ${(T.highCritRate * 100).toFixed(1)}% × ${T.critMult}, 보호막 ${T.screenTurns}턴 × ${T.screenMult}, 이로치 ${(T.shinyRate * 100).toFixed(0)}%`);
+  L.push('');
   const out = path.join(__dirname, '..', 'docs', 'balance.md');
-  fs.mkdirSync(path.dirname(out), { recursive: true });
-  fs.writeFileSync(out, lines.join('\n'), 'utf8');
+  fs.writeFileSync(out, L.join('\n'), 'utf8');
   console.log('wrote ' + path.relative(process.cwd(), out));
 }
 

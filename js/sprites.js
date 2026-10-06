@@ -1,10 +1,14 @@
 /* 포캣몬 캐릭터 일러스트 — assets/mon/*.webp (2img 생성 → 크로마키 → 768×768, 투명 배경)
    구도: 정사각 캔버스, 발끝이 바닥 중앙(아래 여백 3.1%), 그림 높이 약 92%.
-   이로치는 고양이 3종만 있다(게임에서 이로치는 고양이 상대에게만 나온다). */
+   이로치는 고양이 18종만 있다(메탈가디언몬·블랙은 이로치가 없다). */
 (function (root) {
   'use strict';
 
-  var SHINY = { naru: true, seol: true, ssaga: true };
+  var SHINY = {
+    naru: true, seol: true, ssaga: true,
+    cheese: true, flare: true, leaf: true, zap: true, punch: true, venom: true, sand: true, wing: true,
+    psy: true, moth: true, rock: true, ghost: true, dragon: true, iron: true, ribbon: true
+  };
 
   // 이 스크립트 위치(js/) 기준으로 assets/ 경로를 정한다 — tools/ 하위 페이지에서도 동작
   var base = 'assets/mon/';
