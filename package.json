@@ -1,8 +1,8 @@
-﻿{
+{
   "name": "pocatmon-battle",
   "version": "1.0.0",
   "private": true,
-  "description": "?ъ베紐?諛고? ??紐⑤컮???몃줈 3D ?댁젣 ?곗냽 ?꾩쟾 寃뚯엫",
+  "description": "포캣몬 배틀 — 모바일 세로 3D 턴제 연속 도전 게임",
   "scripts": {
     "test": "node --test",
     "sim": "node tools/sim.js",
@@ -13,4 +13,3 @@
     "playwright-core": "^1.63.0"
   }
 }
-

@@ -1,4 +1,4 @@
-// 스프라이트 갤러리 스크린샷 + 로드 검증. 사용: node tools/gallery-shot.js
+// 캐릭터 갤러리 스크린샷 + 로드 검증. 사용: node tools/gallery-shot.js
 'use strict';
 const path = require('path');
 const fs = require('fs');
@@ -24,6 +24,6 @@ const { launch } = require('./browser');
   await browser.close();
   server.close();
   console.log(JSON.stringify({ ...res, errors }));
-  const ok = res.loaded === 10 && res.failed.length === 0 && res.widths.every((w) => w === 512) && errors.length === 0;
+  const ok = res.loaded === 10 && res.failed.length === 0 && res.widths.every((w) => w === 768) && errors.length === 0;
   process.exit(ok ? 0 : 1);
 })().catch((e) => { console.error(e); process.exit(1); });

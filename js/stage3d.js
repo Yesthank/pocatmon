@@ -9,8 +9,8 @@
 
   var SCRIPT_SRC = (document.currentScript && document.currentScript.src) || '';
   var TAU = Math.PI * 2;
-  var FOOT = 22 / 512;     // 스프라이트(512) 발끝 아래 투명 여백 비율
-  var ART_TOP = 0.87;      // 발끝에서 그림 꼭대기까지 높이(판 크기 대비)
+  var FOOT = (root.Sprites && Sprites.FOOT) || 0.031;       // 발끝 아래 투명 여백 비율
+  var ART_TOP = (root.Sprites && Sprites.ART_TOP) || 0.86;  // 발끝에서 그림 꼭대기까지 높이(판 크기 대비)
 
   /* ───────────── 공통 유틸 ───────────── */
   function now() { return (root.performance && performance.now) ? performance.now() : Date.now(); }
@@ -602,7 +602,7 @@
     hazeY: -2.0, hazeZ: -13
   };
   // 판 크기(월드 단위): 고양이 0.4m → 1.7, 디지몬 1.2m → 3.1 (뚜렷이 큼)
-  function sizeFor(id) { return 1.0 + 1.75 * monHeight(id); }
+  function sizeFor(id) { return 1.25 + 1.6 * monHeight(id); }
   // 배경 그림 위·아래 가장자리 띠의 평균색 → 원통 가장자리를 자연스럽게 잇는 색
   function edgeColors(img) {
     try {
