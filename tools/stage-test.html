@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>무대 테스트</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; background: #0b1020; color: #dfe6f5; font: 12px/1.4 sans-serif; }
+  #arena { position: relative; width: 390px; height: 500px; overflow: hidden; background: #000; }
+  #log { padding: 6px 8px; white-space: pre-wrap; }
+  .mark { position: absolute; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent;
+    border-top: 9px solid #ffe14d; transform: translate(-50%, -100%); pointer-events: none; z-index: 5; display: none; }
+</style>
+</head>
+<body>
+<div id="arena"></div>
+<div id="log"></div>
+<script src="../vendor/three.min.js"></script>
+<script src="../js/data.js"></script>
+<script src="../js/sprites.js"></script>
+<script src="../js/stage3d.js"></script>
+<script>
+(function () {
+  'use strict';
+  // 쿼리: ?2d 강제 2D, ?bg=dark&p=naru&e=black, ?still 데모 생략, ?full 흑화·그림자 연출까지
+  var q = new URLSearchParams(location.search);
+  var arena = document.getElementById('arena');
+  var logEl = document.getElementById('log');
+  function log(s) { logEl.textContent += s + '\n'; }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function mark(stage) {
+    ['player', 'enemy'].forEach(function (side) {
+      var m = document.getElementById('mk-' + side);
+      if (!m) { m = document.createElement('div'); m.className = 'mark'; m.id = 'mk-' + side; arena.appendChild(m); }
+      var p = stage.screenPos(side);
+      m.style.left = p.x + 'px'; m.style.top = p.y + 'px'; m.style.display = 'block';
+    });
+  }
+
+  var stage = Stage.create(arena, { force2d: q.has('2d') });
+  window.__stage = stage;
+  log('mode: ' + stage.mode);
+
+  (async function () {
+    var t0 = performance.now();
+    await stage.setBackground(q.get('bg') || 'dark');
+    await Promise.all([
+      stage.setFighter('player', q.get('p') || 'naru', { shiny: q.has('shiny') }),
+      stage.setFighter('enemy', q.get('e') || 'black', {})
+    ]);
+    await stage.enter('enemy');
+    await stage.enter('player');
+    window.__entered = true;
+    if (q.has('still')) { await wait(600); mark(stage); window.__done = true; return; }
+
+    await stage.attack('enemy', 'dark');
+    await stage.hit('player', { crit: true, eff: 1 });
+
+    // 공격 중간 프레임 캡처 지점
+    var atk = stage.attack('player', 'water');
+    setTimeout(function () { window.__mid = true; }, 330);
+    await atk;
+    await stage.hit('enemy', { crit: false, eff: 2 });
+    window.__midDone = true;
+
+    await stage.attack('enemy', 'steel');
+    await stage.miss('player');
+    await stage.attack('player', 'ice');
+    await stage.hit('enemy', { eff: 1 });
+    stage.freeze('enemy', true);
+    await stage.attack('enemy', 'normal');
+    await stage.hit('player', { eff: 0.5 });
+    await stage.heal('player');
+    stage.shield('enemy', true);
+    await stage.statFx('player', true);
+    await stage.statFx('enemy', false);
+    stage.aura('enemy', '#ff2440');
+    await stage.focus('enemy');
+    await stage.focus(null);
+    await stage.flash('#ffffff');
+    stage.freeze('enemy', false);
+    stage.shield('enemy', false);
+    stage.aura('enemy', null);
+
+    if (q.has('full')) {
+      await stage.setBackground('metal');
+      await stage.setFighter('enemy', 'metal');
+      await stage.enter('enemy');
+      await stage.faint('enemy');
+      await stage.setBackground('dark');
+      await stage.setFighter('enemy', 'metal');
+      await stage.transform('enemy', 'black', {});
+      await stage.setFighter('player', 'metal');
+      await stage.shadowRise();
+      await stage.faint('player');
+      stage.clearFighter('player');
+      await stage.setFighter('player', q.get('p') || 'naru');
+      await stage.enter('player');
+    }
+    stage.shield('player', true);
+    await wait(700);
+    mark(stage);
+    log('demo ' + Math.round(performance.now() - t0) + 'ms');
+    window.__done = true;
+  })().catch(function (e) { log('ERR ' + e); console.error(e); });
+})();
+</script>
+</body>
+</html>
