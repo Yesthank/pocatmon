@@ -19,9 +19,9 @@ npm test               # 엔진 테스트, 수 초
 npm run sim            # 5종 × 1000런 밸런스, 결과 문서 갱신(--no-write 로 생략)
 npm run smoke          # 헤드리스 3D + 2D 흐름, tools/out/*.png 스크린샷, 1~3분
 ```
-보조 도구: `node tools/gallery-shot.js`(캐릭터 그림 8장 — 일반 5 + 고양이 이로치 3 — 을 일반·이로치 10칸으로 로드 확인), `node tools/stage-shot.js`(경기장 3D/2D 연출 확인).
+보조 도구로는 `node tools/gallery-shot.js`와 `node tools/stage-shot.js`가 있다. `node tools/gallery-shot.js`는 캐릭터 그림 8장(일반 5장, 고양이 이로치 3장)을 일반·이로치 10칸에 로드해 확인하고, `node tools/stage-shot.js`는 경기장 3D/2D 연출을 확인한다.
 
 ## 배포
 - 공개 저장소 `Yesthank/pocatmon`의 `main` 브랜치 루트를 GitHub Pages가 서빙한다(`https://yesthank.github.io/pocatmon/`).
-- `git push origin main` 후 1~2분 안에 반영된다. 확인: 주소가 HTTP 200이고 `<title>`이 "포캣몬 배틀"인지 본다.
-- Pages 빌드는 Jekyll을 건너뛴다(루트의 `.nojekyll`). 이 파일을 지우면 `_`로 시작하는 경로가 무시될 수 있다.
+- `git push origin main` 후 1~2분 안에 반영된다. 반영 여부는 주소가 HTTP 200을 돌려주고 `<title>`이 "포캣몬 배틀"인지 보고 확인한다.
+- 루트에 있는 `.nojekyll` 파일 때문에 Pages 빌드는 Jekyll을 건너뛴다. 이 파일을 지우면 `_`로 시작하는 경로가 무시될 수 있다.

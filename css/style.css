@@ -48,30 +48,67 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 }
 
 /* ───────── 공통 버튼 ───────── */
+/* 기울어진 판(::before)이 버튼 모양을 맡고, 글자는 똑바로 선다 — 기술 패널과 같은 게임풍 */
 .btn {
-  appearance: none; -webkit-appearance: none; border: 0;
+  appearance: none; -webkit-appearance: none; border: 0; background: none;
+  position: relative; isolation: isolate;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  width: 100%; min-height: 52px; padding: 10px 16px; border-radius: 18px;
-  font-weight: 900; font-size: 17px; letter-spacing: -.01em; color: #fff;
-  transition: transform .08s ease, box-shadow .08s ease, filter .2s;
+  width: calc(100% - 16px); margin-left: 8px; margin-right: 8px;
+  min-height: 52px; padding: 10px 28px;
+  font-weight: 900; font-size: 17px; letter-spacing: .01em; color: #fff;
+  transition: transform .1s ease-out, filter .2s;
+}
+.btn::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  transform: skewX(-12deg); border-radius: 9px;
+  transition: filter .15s;
 }
 .btn-main { display: block; line-height: 1.2; }
-.btn-sub { display: block; margin-top: 3px; font-size: 12px; font-weight: 700; opacity: .72; }
+.btn-sub { display: block; margin-top: 3px; font-size: 12px; font-weight: 800; opacity: .75; }
 .btn small { font-size: 12px; font-weight: 700; opacity: .7; }
-.btn-big { min-height: 62px; font-size: 19px; }
-.btn-primary {
-  color: #2b1600;
-  background: linear-gradient(180deg, #fff0a8 0%, #ffd34d 42%, #ffad1f 100%);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), inset 0 -4px 0 rgba(170, 80, 0, .28), 0 5px 0 #9a5200, 0 12px 26px rgba(255, 170, 40, .28);
+.btn-big { min-height: 62px; font-size: 20px; }
+.btn-big .btn-main { font-style: italic; letter-spacing: .02em; }
+
+/* 주 버튼: 금빛 판 + 짙은 테두리 + 반짝이 + ▶▶ */
+.btn-primary { color: #2a1400; text-shadow: 0 1px 0 rgba(255, 255, 255, .55); }
+.btn-primary::before {
+  background:
+    linear-gradient(105deg, transparent 38%, rgba(255, 255, 255, .75) 48%, transparent 58%) no-repeat,
+    linear-gradient(180deg, #fff6c4 0%, #ffd955 38%, #ffb21c 62%, #ff9800 100%);
+  background-size: 260% 100%, 100% 100%;
+  background-position: 160% 0, 0 0;
+  box-shadow:
+    inset 0 0 0 2px #5a2e00, inset 0 3px 0 2px rgba(255, 255, 255, .6), inset 0 -4px 0 2px rgba(150, 60, 0, .35),
+    0 0 0 2px rgba(255, 220, 120, .35), 0 6px 0 #6a3500, 0 12px 26px rgba(255, 170, 40, .35);
+  animation: btnShine 3.2s ease-in-out infinite;
 }
-.btn-primary:active { transform: translateY(4px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), inset 0 -3px 0 rgba(170, 80, 0, .28), 0 1px 0 #9a5200, 0 4px 12px rgba(255, 170, 40, .2); }
-.btn-ghost {
-  color: #e8edff; background: rgba(255, 255, 255, .07);
-  border: 1.5px solid rgba(255, 255, 255, .18);
-  box-shadow: 0 4px 0 rgba(0, 0, 0, .3);
+.btn-primary::after {
+  content: '▶▶'; position: absolute; right: 22px; top: 50%; transform: translateY(-50%);
+  font-size: 11px; letter-spacing: -3px; color: #7a3d00; opacity: .75; pointer-events: none;
+  animation: btnNudge 1.2s ease-in-out infinite;
 }
-.btn-ghost:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0, 0, 0, .3); }
-.btn-disabled, .btn:disabled { color: #8f98b8; background: #1d2445; border: 1.5px dashed rgba(255, 255, 255, .16); box-shadow: none; cursor: default; }
+@keyframes btnShine { 0%, 50% { background-position: 160% 0, 0 0; } 80%, 100% { background-position: -60% 0, 0 0; } }
+@keyframes btnNudge { 0%, 100% { transform: translate(0, -50%); } 50% { transform: translate(4px, -50%); } }
+.btn-primary:active { transform: translateY(4px) scale(.98); }
+.btn-primary:active::before { filter: brightness(1.12); box-shadow: inset 0 0 0 2px #5a2e00, inset 0 3px 0 2px rgba(255, 255, 255, .6), 0 2px 0 #6a3500, 0 4px 12px rgba(255, 170, 40, .3); }
+
+/* 보조 버튼: 남색 유리 판 + 가는 금테 */
+.btn-ghost { color: #eef2ff; text-shadow: 0 1px 2px rgba(0, 0, 0, .5); }
+.btn-ghost::before {
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, .05) 0 2px, transparent 2px 7px),
+    linear-gradient(180deg, rgba(48, 60, 120, .92), rgba(16, 22, 52, .95));
+  box-shadow: inset 0 0 0 1.5px rgba(255, 214, 110, .55), inset 0 1px 0 1.5px rgba(255, 255, 255, .12), 0 0 0 2px #070a1c, 0 5px 0 #050716, 0 8px 18px rgba(0, 0, 0, .4);
+}
+.btn-ghost:active { transform: translateY(3px) scale(.98); }
+.btn-ghost:active::before { filter: brightness(1.25); }
+
+.btn-disabled, .btn:disabled { color: #8f98b8; text-shadow: none; cursor: default; }
+.btn-disabled::before, .btn:disabled::before {
+  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, .04) 0 2px, transparent 2px 7px), #1b2244;
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .14); animation: none;
+}
+.btn-disabled::after, .btn:disabled::after { content: none; }
 
 .icon-btn {
   width: 48px; height: 48px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, .2);

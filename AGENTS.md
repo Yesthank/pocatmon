@@ -33,16 +33,16 @@ battle/
 - 배포(push) 전 `npm test`, `npm run sim`(클리어율 35~95%), `npm run smoke`(콘솔 오류 0, 가로 넘침 0) 세 개가 모두 종료 코드 0이어야 한다. `main`에 push하면 곧바로 공개된다.
 - 패배하면 런 전체를 처음부터 한다(사용자 결정). "그 판부터 재도전"으로 바꾸지 않는다.
 - `engine.js`·`data.js`는 DOM을 모르는 순수 로직으로 유지한다. 화면은 엔진 이벤트만 재생한다.
-- 실행 중 외부 네트워크 금지(CDN·웹폰트·API), 상대 경로만 쓴다. three는 r128 UMD 고정이다.
+- 실행 중에는 외부 네트워크(CDN·웹폰트·API)를 쓰지 않고, 상대 경로만 쓴다. three는 r128 UMD로 고정한다.
 - 상위 폴더의 원본 시트 이미지와 GitHub 토큰은 절대 커밋하지 않는다.
 
 ## 작업 전에 읽을 것
-- 항상: `docs/standards.md`, `docs/engineering-notes.md`, 손댈 폴더의 `AGENTS.md`.
-- 기술·수치·상성을 바꾸기 전: `docs/business-rules.md`(효과 종류는 고정, 수치만 조정) → 바꾼 뒤 `npm run sim`.
-- 캐릭터 그림을 바꾸기 전: `docs/engineering-notes.md`의 2img 키아웃·배치 절차와 `Sprites.FOOT/ART_TOP` 연동.
+- 항상: `docs/standards.md`, `docs/engineering-notes.md`, 손댈 폴더에 있는 `AGENTS.md`.
+- 기술·수치·상성을 바꾸기 전: `docs/business-rules.md`(효과 종류는 고정하고 수치만 조정). 바꾼 뒤에는 `npm run sim`을 실행한다.
+- 캐릭터 그림을 바꾸기 전: `docs/engineering-notes.md`에 적힌 2img 키아웃·배치 절차, 그리고 그림 구도와 `Sprites.FOOT/ART_TOP`의 연동.
 - 저장 형식(런 기록)을 건드리기 전: `docs/contracts.md`(버전 `v`를 올리는 규칙).
 - 연출(Stage) 메서드를 추가하기 전: 3D와 2D 두 구현에 같은 이름으로 넣고, 반드시 resolve하는 Promise를 돌려준다.
 
 ## 문제가 생기면
-- **바로 사용자에게 알릴 것:** 공개 사이트가 안 열리거나 검은 화면이 될 때, 3D·2D 둘 다에서 입력 잠금이 풀리지 않아 진행이 멈출 때, 저장소에 원본 이미지나 토큰이 커밋되었을 때, 클리어율이 범위를 벗어난 채 배포되었을 때.
-- 그 밖의 문제는 `docs/tracking/findings.md`에 기록한다. 조건, 증상, 영향 범위, 지금 못 고치는 이유를 함께 적는다.
+- **바로 사용자에게 알릴 것:** 공개 사이트가 열리지 않거나 검은 화면만 나올 때, 3D·2D 둘 다에서 입력 잠금이 풀리지 않아 진행이 멈출 때, 저장소에 원본 이미지나 토큰이 커밋되었을 때, 클리어율이 범위를 벗어난 채 배포되었을 때.
+- 그 밖의 문제는 `docs/tracking/findings.md`에 기록한다. 이때 조건, 증상, 영향 범위, 지금 고치지 못하는 이유를 함께 적는다.
