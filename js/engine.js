@@ -49,6 +49,8 @@
       level: T.startLevel, mult: T.enemyMult[run.stage], side: 'enemy',
       shiny: !!run.shiny[run.stage], displayLevel: T.startLevel + run.stage + (run.stage === 3 ? 2 : 0)
     });
+    // 최종 보스는 체력만 추가로 두껍게 — 같은 몬스터를 플레이어로 고를 때의 세기와 분리
+    if (run.stage === 3 && T.bossHpMult) e.maxHp = e.hp = Math.round(e.maxHp * T.bossHpMult);
     return { p: p, e: e, turn: 0, over: false, winner: null };
   }
 

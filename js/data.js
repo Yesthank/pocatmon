@@ -62,7 +62,7 @@
     },
     seol: {
       name: '설냥이', types: ['ice'], cat: true, height: 0.5, bg: 'ice',
-      base: { hp: 115, atk: 60, def: 72, spd: 84 },
+      base: { hp: 128, atk: 60, def: 80, spd: 84 },
       moves: ['snowball', 'blizzard', 'iceshield', 'freezebeam'],
       blurb: '차가운 눈송이를 품은 순백의 고양이 포켓몬이다. 겨울의 요정처럼 아름답다.',
       lines: {
@@ -74,7 +74,7 @@
     },
     ssaga: {
       name: '싸가지냥', types: ['dark', 'normal'], cat: true, height: 0.4, bg: 'alley',
-      base: { hp: 100, atk: 52, def: 58, spd: 90 },
+      base: { hp: 94, atk: 52, def: 58, spd: 90 },
       moves: ['wallhop', 'trashdig', 'nyanpunch', 'betray'],
       blurb: '남의 집 담을 넘나드는 인성 쓰레기 길고양이 포켓몬이다. 밥을 줘도 은혜를 모른다.',
       lines: {
@@ -86,7 +86,7 @@
     },
     metal: {
       name: '메탈가디언몬', types: ['steel'], cat: false, height: 1.2, bg: 'metal',
-      base: { hp: 146, atk: 58, def: 78, spd: 64 },
+      base: { hp: 136, atk: 52, def: 78, spd: 64 },
       moves: ['metalimpact', 'guardianshield', 'speedattack', 'kindguard'],
       blurb: '의리와 예절을 중시하는 강인한 금속의 신념, 그것이 바로 메탈가디언몬이다. 약자에게 다정하고 강자에게 엄격하다.',
       lines: {
@@ -98,7 +98,7 @@
     },
     black: {
       name: '블랙 메탈가디언몬', types: ['dark', 'steel'], cat: false, height: 1.2, bg: 'dark',
-      base: { hp: 116, atk: 64, def: 84, spd: 74 },
+      base: { hp: 116, atk: 58, def: 84, spd: 74 },
       moves: ['darkslash', 'blackshield', 'darkspeed', 'deathimpact'],
       blurb: '어둠의 힘에 물들어 흑화한 메탈가디언몬이다. 의리와 정의는 강자에게만 존재한다고 믿는다.',
       lines: {
@@ -136,7 +136,8 @@
     crit: 1 / 16, highCrit: 1 / 4, critMult: 1.5,
     levelGrowth: 1.15,   // 레벨 1당 능력치 배율
     startLevel: 5,
-    enemyMult: [0.90, 0.95, 0.95, 1.15],
+    enemyMult: [0.82, 0.90, 1.08, 1.12],   // 판별 상대 능력치 배율 — 앞 판은 쉽게, 뒤 판은 어렵게
+    bossHpMult: 1.45,    // 최종 보스 판에만 추가로 거는 체력 배율
     shinyRate: 0.1,
     shieldTurns: 2, shieldMult: 0.5,
     stageMax: 3
