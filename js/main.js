@@ -388,7 +388,7 @@
           '<div class="logo-kicker">POCATMON BATTLE</div>' +
           '<h1 class="logo" data-text="포캣몬">포캣몬</h1>' +
           '<div class="logo-ribbon"><span>배 틀</span></div>' +
-          '<p class="tagline">고양이 포켓몬과 수호자의 4연전</p>' +
+          '<p class="tagline">고양이 포켓몬과 수호자가 펼치는 4연전</p>' +
         '</div>' +
         '<div class="cast cast-' + cast.length + '"><div class="cast-inner"><div class="cast-floor"></div>' + cast.map(function (id, i) {
           return '<div class="cast-m cast-' + id + '" style="--i:' + i + '">' + img(id, 'cast-img') + '</div>';
@@ -397,7 +397,7 @@
           (saved ? '<button type="button" class="btn btn-primary btn-big" data-act="continue"><span class="btn-main">이어하기</span><span class="btn-sub">' + contSub + '</span></button>' : '') +
           '<button type="button" class="btn ' + (saved ? 'btn-ghost' : 'btn-primary btn-big') + '" data-act="new"><span class="btn-main">새로 시작</span>' + (saved ? '<span class="btn-sub">저장된 판은 지워져요</span>' : '') + '</button>' +
         '</div>' +
-        '<div class="title-foot">' + (unlocked ? '✦ 블랙 메탈가디언몬 해금됨' : '네 판을 내리 이기면 클리어!') + '</div>' +
+        '<div class="title-foot">' + (unlocked ? '✦ 블랙 메탈가디언몬을 해금했어요' : '네 판을 내리 이기면 클리어예요!') + '</div>' +
       '</section>';
   }
 
@@ -480,7 +480,7 @@
     host.innerHTML =
       '<section class="scr preview-scr">' +
         '<header class="scr-head"><button type="button" class="back-btn" data-act="select" aria-label="다시 고르기">‹</button>' +
-          '<div><h2>도전 순서</h2><p>네 판을 내리 이기면 클리어! 이기면 체력 회복 + 레벨 업</p></div></header>' +
+          '<div><h2>도전 순서</h2><p>네 판을 내리 이기면 클리어예요. 이길 때마다 체력이 회복되고 레벨이 올라요.</p></div></header>' +
         '<ol class="ladder">' + run.order.map(function (id, i) {
           var boss = i === 3, m = M[id];
           return '<li class="rung' + (boss ? ' boss' : '') + '" style="--tc:' + (boss ? '#ff2440' : mainColor(id)) + ';--i:' + i + '">' +
