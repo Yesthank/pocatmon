@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>포캣몬 스프라이트 갤러리</title>
+<style>
+  body { margin: 0; background: #20283a; font-family: sans-serif; color: #fff; }
+  .grid { display: grid; grid-template-columns: repeat(5, 256px); gap: 8px; padding: 8px; }
+  figure { margin: 0; background: repeating-conic-gradient(#3a4560 0 25%, #2c3550 0 50%) 0 0 / 24px 24px; border-radius: 8px; }
+  img { width: 256px; height: 256px; display: block; }
+  figcaption { font-size: 13px; padding: 4px 6px; background: #111827; }
+</style>
+</head>
+<body>
+<div class="grid" id="g"></div>
+<script src="../js/sprites.js"></script>
+<script>
+  var ids = ['naru', 'seol', 'ssaga', 'metal', 'black'];
+  var g = document.getElementById('g');
+  window.loaded = 0; window.failed = [];
+  [false, true].forEach(function (shiny) {
+    ids.forEach(function (id) {
+      var f = document.createElement('figure');
+      var im = new Image();
+      im.onload = function () { window.loaded++; };
+      im.onerror = function () { window.failed.push(id + (shiny ? '*' : '')); };
+      im.src = Sprites.spriteURL(id, { shiny: shiny });
+      im.dataset.id = id;
+      f.appendChild(im);
+      var c = document.createElement('figcaption');
+      c.textContent = id + (shiny ? ' (이로치)' : '');
+      f.appendChild(c);
+      g.appendChild(f);
+    });
+  });
+</script>
+</body>
+</html>
