@@ -206,8 +206,9 @@ test('런 진행: 승리 시 레벨업, 4판 후 클리어, 보스 판 앞 컷�
   assert.equal(b.e.id, 'black');
   assert.equal(b.e.displayLevel, 10);
   assert.equal(b.p.level, 8);
-  assert.ok(Math.abs(b.p.maxHp - Math.round(95 * Math.pow(1.08, 3))) <= 1);
-  assert.ok(Math.abs(b.e.maxHp - Math.round(128 * 1.2)) <= 1);
+  // 플레이어 HP = 기본 HP × levelGrowth^(레벨-5), 보스 HP = 기본 HP × enemyMult[3] (수치는 data.js에서 읽음)
+  assert.ok(Math.abs(b.p.maxHp - Math.round(D.MONSTERS.naru.base.hp * Math.pow(D.TUNING.levelGrowth, 3))) <= 1);
+  assert.ok(Math.abs(b.e.maxHp - Math.round(D.MONSTERS.black.base.hp * D.TUNING.enemyMult[3])) <= 1);
   assert.equal(E.winBattle(r), 'cleared');
 });
 
