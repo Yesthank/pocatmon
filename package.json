@@ -1,0 +1,15 @@
+{
+  "name": "pocatmon-battle",
+  "version": "1.0.0",
+  "private": true,
+  "description": "포캣몬 배틀 — 모바일 세로 3D 턴제 연속 도전 게임",
+  "scripts": {
+    "test": "node --test test/",
+    "sim": "node tools/sim.js",
+    "smoke": "node tools/smoke.js",
+    "serve": "node tools/serve.js"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.63.0"
+  }
+}
