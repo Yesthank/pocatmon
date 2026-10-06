@@ -268,17 +268,19 @@
   /* ── 저장 (어댑터 주입식, 실패 시 메모리 대체) ── */
   var KEY_UNLOCK = 'pocatmon.unlocked.black', KEY_RUN = 'pocatmon.run';
   function createStore(storage) {
+    // 이번 방문에서 쓴 값(삭제 포함)이 저장소보다 우선한다 — 쓰기만 실패하는 저장소에서도 옛 값이 되살아나지 않게
     var mem = {};
     function get(k) {
+      if (Object.prototype.hasOwnProperty.call(mem, k)) return mem[k];
       try { if (storage) { var v = storage.getItem(k); if (v !== null && v !== undefined) return v; } } catch (e) { /* 메모리 대체 */ }
-      return Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null;
+      return null;
     }
     function set(k, v) {
       mem[k] = v;
       try { if (storage) storage.setItem(k, v); } catch (e) { /* 메모리 대체 */ }
     }
     function del(k) {
-      delete mem[k];
+      mem[k] = null;
       try { if (storage) storage.removeItem(k); } catch (e) { /* 메모리 대체 */ }
     }
     return {

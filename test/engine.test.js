@@ -245,6 +245,18 @@ test('저장소를 쓸 수 없어도 오류 없이 이번 방문 동안 유지',
   }
 });
 
+test('읽기는 되고 쓰기·삭제만 실패하는 저장소에서도 지운 런이 되살아나지 않음', () => {
+  const stale = JSON.stringify(E.createRun('naru', mulberry32(5)));
+  const ro = { getItem: (k) => (k === E.KEYS.run ? stale : null), setItem() { throw new Error('quota'); }, removeItem() { throw new Error('denied'); } };
+  const st = E.createStore(ro);
+  assert.ok(st.loadRun());
+  st.clearRun();
+  assert.equal(st.loadRun(), null);
+  const r = E.createRun('seol', mulberry32(6));
+  st.saveRun(r);
+  assert.deepEqual(st.loadRun(), r);
+});
+
 test('조사 처리', () => {
   assert.equal(E.josa('나루냥', '은/는'), '나루냥은');
   assert.equal(E.josa('설냥이', '은/는'), '설냥이는');
