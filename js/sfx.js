@@ -32,13 +32,15 @@
   function unlock() {
     try {
       var c = ensure();
-      if (c && c.state === 'suspended' && c.resume) c.resume().catch(function () {});
+      // iOS는 전화·앱 전환 뒤 'interrupted' 상태로 남기도 한다
+      if (c && c.state !== 'running' && c.state !== 'closed' && c.resume) c.resume().catch(function () {});
     } catch (e) { /* 무시 */ }
   }
   try {
     ['pointerdown', 'touchend', 'keydown'].forEach(function (t) {
       root.addEventListener(t, unlock, { passive: true, capture: true });
     });
+    if (root.document) root.document.addEventListener('visibilitychange', function () { if (!root.document.hidden && ctx) unlock(); });
   } catch (e) { /* 무시 */ }
 
   /* ── 합성 원소 ── */

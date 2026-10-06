@@ -229,6 +229,10 @@ test('이어하기 저장·복원·삭제, 해금', () => {
   assert.equal(st.loadRun(), null);
   mem.set(E.KEYS.run, 'not json');
   assert.equal(st.loadRun(), null);
+  // 정수가 아닌 판 번호·레벨은 무시
+  const odd = Object.assign({}, r, { stage: 1.5 });
+  assert.equal(E.isValidRun(odd), false);
+  assert.equal(E.isValidRun(Object.assign({}, r, { level: Infinity })), false);
   assert.equal(st.isUnlocked(), false);
   st.unlock();
   assert.equal(E.createStore(ls).isUnlocked(), true);

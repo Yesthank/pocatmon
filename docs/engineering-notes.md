@@ -31,7 +31,3 @@
   - 설냥이: 연한 하늘색 털 그림자(채도 0.38 미만, 명도 0.62 초과)를 **털로 분류**한다. 그렇지 않으면 결정과 함께 분홍으로 번진다.
   - 싸가지냥: 어두운 저채도 털을 황갈색으로 바꾸되, 명도 0.09 미만인 선은 짙은 갈색으로 남긴다.
 - 확인: `node tools/gallery-shot.js`가 10장 모두 768px로 로드되는지 검사하고 `tools/out/gallery.png`를 남긴다.
-
-## GitHub 배포 인증 (gh CLI 미로그인 환경)
-- `gh`가 로그인되어 있지 않아도 git 자격 증명 관리자에 GitHub 토큰이 있다. PowerShell 파이프로 `git credential fill`에 넣으면 "missing protocol field" 오류가 난다(줄바꿈·인코딩 문제).
-- 대응: LF 줄바꿈의 BOM 없는 파일에 `protocol=https` / `host=github.com`을 쓰고, `cmd /c "git credential fill < 파일"`로 넣는다. 응답의 `password=` 값이 토큰이며 절대 출력하지 않는다.

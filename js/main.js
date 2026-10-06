@@ -308,19 +308,39 @@
   }
 
   /* ───────── 기술 버튼 ───────── */
+  // 타입 문양(흰색 단색, 24×24) — 기술 패널 엠블럼용
+  var TYPE_GLYPH = {
+    water: '<path fill="#fff" d="M12 2.5c-3.6 5-6.6 8.7-6.6 12.1A6.6 6.6 0 0 0 18.6 14.6c0-3.4-3-7.1-6.6-12.1z"/><path fill="none" stroke="rgba(0,0,0,.25)" stroke-width="1.6" stroke-linecap="round" d="M8.9 14.8a3.3 3.3 0 0 0 2.6 3"/>',
+    ice: '<g stroke="#fff" stroke-width="2.2" stroke-linecap="round" fill="none"><path d="M12 2.5v19M3.8 7.2l16.4 9.6M3.8 16.8l16.4-9.6"/><path d="M9.5 3.8 12 6.2l2.5-2.4M9.5 20.2 12 17.8l2.5 2.4M3.6 10.3l3.3.9-.8 3.3M20.4 10.3l-3.3.9.8 3.3"/></g>',
+    steel: '<path fill="#fff" fill-rule="evenodd" d="M12 2l8.7 5v10L12 22l-8.7-5V7zm0 6.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6z"/>',
+    dark: '<g stroke="#fff" stroke-width="2.6" stroke-linecap="round" fill="none"><path d="M6.5 3.5c2.8 4.3 2.8 11.5-.6 17M12 2.8c3 4.8 3 13-.3 18.6M17.6 3.5c2.8 4.3 2.6 11.5-.8 17"/></g>',
+    normal: '<path fill="#fff" d="M12 2.2l2.7 7.1 7.1 2.7-7.1 2.7L12 21.8l-2.7-7.1L2.2 12l7.1-2.7z"/>'
+  };
+  function moveStat(mv) {
+    if (mv.kind === 'heal') return '<b>' + Math.round(mv.heal * 100) + '<small>%</small></b><i>회복</i>';
+    if (mv.kind === 'shield') return '<b>½</b><i>피해</i>';
+    return '<b>' + mv.power + (mv.hits ? '<small>×' + mv.hits[0] + '~' + mv.hits[1] + '</small>' : '') + '</b><i>위력</i>';
+  }
   function renderMoves() {
     var b = S.b;
     movesEl.innerHTML = b.p.moves.map(function (id) {
-      var mv = MV[id], hint = '';
+      var mv = MV[id], tags = '';
       if (mv.kind === 'atk') {
         var eff = E.effectiveness(mv.type, b.e.types);
-        if (eff > 1) hint = '<span class="mv-hint good">효과 굉장!</span>';
-        else if (eff < 1) hint = '<span class="mv-hint bad">효과 별로</span>';
+        if (eff > 1) tags += '<span class="mv-eff good">효과 굉장!</span>';
+        else if (eff < 1) tags += '<span class="mv-eff bad">효과 별로</span>';
       }
-      return '<button type="button" class="move-btn" data-move="' + id + '" style="--tc:' + TY[mv.type].color + '" disabled>' +
-        '<span class="mv-row"><span class="mv-type">' + esc(TY[mv.type].name) + '</span>' + (mv.priority ? '<span class="mv-pri">선공</span>' : '') + hint + '</span>' +
-        '<span class="mv-name">' + esc(mv.name) + '</span>' +
-        '<span class="mv-pow">' + powerLabel(mv) + (mv.kind === 'atk' && mv.acc < 100 ? ' · 명중 ' + mv.acc : '') + '</span>' +
+      if (mv.priority) tags += '<span class="mv-pri">⚡선공</span>';
+      // 타입은 엠블럼으로 보이므로 아랫줄은 명중/종류만
+      var sub = mv.kind === 'atk' ? (mv.acc < 100 ? '명중 ' + mv.acc : '필중') : mv.kind === 'heal' ? '회복기' : '방어기';
+      return '<button type="button" class="move-btn' + (mv.special ? ' sp' : '') + '" data-move="' + id + '" style="--tc:' + TY[mv.type].color + '" disabled>' +
+        '<span class="mv-in">' +
+          '<span class="mv-emb"><svg viewBox="0 0 24 24" aria-hidden="true">' + (TYPE_GLYPH[mv.type] || '') + '</svg></span>' +
+          '<span class="mv-name">' + esc(mv.name) + '</span>' +
+          '<span class="mv-bot"><span class="mv-sub">' + sub + '</span><span class="mv-stat">' + moveStat(mv) + '</span></span>' +
+        '</span>' +
+        (tags ? '<span class="mv-tags">' + tags + '</span>' : '') +
+        (mv.special ? '<span class="mv-sp">필살</span>' : '') +
       '</button>';
     }).join('');
   }
@@ -582,6 +602,8 @@
     try {
       var eMove = E.chooseEnemyMove(S.b, rng);
       var evs = E.resolveTurn(S.b, moveId, eMove, rng);
+      // 패배는 연출 전에 확정 저장 — 쓰러지는 연출 중 메뉴·새로고침으로 패배를 되돌리지 못하게
+      if (S.b.winner === 'enemy') store.clearRun();
       var winner = await playEvents(evs, g);
       guard(g);
       syncDisp();

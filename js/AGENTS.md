@@ -6,7 +6,7 @@
 
 ## 경계
 - `engine.js`·`data.js`는 DOM, `window`, `document`, `localStorage`를 참조하지 않는다. Node `require`로도 돌아야 한다(파일 끝의 UMD 래퍼 유지).
-- `engine.js`는 `stage3d.js`·`main.js`·`sfx.js`를 알지 못한다. 의존은 `main → stage3d / engine / sfx / sprites`, `stage3d → THREE / PData / Sprites`, `engine → PData` 방향뿐이다.
+- `engine.js`는 `stage3d.js`·`main.js`·`sfx.js`를 알지 못한다. 의존은 `main → stage3d / engine / data / sfx / sprites`, `stage3d → THREE / PData / Sprites`, `engine → PData` 방향뿐이다.
 - `main.js`는 배틀 객체(`battle.p`, `battle.e`)의 HP·상태를 직접 바꾸지 않는다. `resolveTurn` 이벤트를 재생해 화면만 갱신한다. 예외는 하나다. 배틀·컷신을 시작할 때 Stage 연출 상태(보호막·얼음·오라)를 초기화하는 일이다.
 
 ## 불변식

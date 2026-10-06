@@ -261,7 +261,8 @@
     if (!D.MONSTERS[r.starter] || !Array.isArray(r.order) || r.order.length !== 4) return false;
     if (!r.order.every(function (id) { return !!D.MONSTERS[id]; })) return false;
     if (!Array.isArray(r.shiny) || r.shiny.length !== 4) return false;
-    if (typeof r.stage !== 'number' || r.stage < 0 || r.stage > 3 || typeof r.level !== 'number') return false;
+    if (!Number.isInteger(r.stage) || r.stage < 0 || r.stage > 3) return false;
+    if (!Number.isInteger(r.level) || r.level < 1 || r.level > 99) return false;
     return ['corrupt', 'shadow', 'face'].indexOf(r.cutscene) >= 0;
   }
 

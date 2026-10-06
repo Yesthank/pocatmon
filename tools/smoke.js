@@ -1,7 +1,7 @@
 // 스모크 테스트 — 로컬 서버 + 390×844 헤드리스 Chromium으로 화면 흐름을 끝까지 확인한다.
 //   사용: node tools/smoke.js   (npm run smoke)
 //   1) 3D 실행: 타이틀 → 선택 → 미리보기 → 배틀 → 자동 탭으로 1판 끝까지 → 결과/게임오버
-//   2) ?2d 실행: 타이틀 → 선택 → 미리보기 → 배틀
+//   2) ?2d 실행(메탈가디언몬): 타이틀 → 선택 → 미리보기 → 배틀
 //   모든 화면에서 콘솔/페이지 오류 0, 가로 넘침 없음(scrollWidth <= clientWidth)을 확인한다.
 'use strict';
 const path = require('path');
@@ -53,7 +53,7 @@ async function run(browser, base, opt) {
     await sleep(500);
     await visit('select', 'smoke_select' + tag);
 
-    await page.locator('[data-pick="naru"]').first().tap();
+    await page.locator('[data-pick="' + (opt.pick || 'naru') + '"]').first().tap();
     await sleep(250);
     await page.locator('button', { hasText: '이 몬스터로 출발' }).first().tap();
     await waitScreen(page, 'preview');
@@ -104,7 +104,8 @@ async function run(browser, base, opt) {
   let r3, r2;
   try {
     r3 = await run(browser, base, { qs: 'fast&seed=1', full: true });
-    r2 = await run(browser, base, { qs: '2d&fast&seed=1', force2d: true });
+    // 2D 경로는 메탈가디언몬으로 — 상성 표시(효과 굉장/별로)·선공·필살 표시까지 화면에 나오게
+    r2 = await run(browser, base, { qs: '2d&fast&seed=1', force2d: true, pick: 'metal' });
   } finally {
     await browser.close();
     server.close();
