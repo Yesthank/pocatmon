@@ -1,0 +1,37 @@
+# 실무 노트
+
+## `file://`로 열면 2D가 된다
+- 증상: `index.html`을 더블클릭해 열면 경기장이 2D로 나온다.
+- 원인: `file://`에서는 WebGL이 jpg/webp를 텍스처로 올릴 때 출처 보안 오류가 난다. 그래서 Stage가 2D로 자동 전환한다.
+- 대응: 3D 확인은 `npm run serve`(기본 포트 8787)로 띄운 `http://127.0.0.1:8787/`에서 한다.
+
+## 헤드리스 Chromium에서 WebGL 켜기
+- `tools/browser.js`는 `--use-angle=swiftshader --enable-unsafe-swiftshader`로 띄운다. 이 플래그를 빼면 헤드리스에서 WebGL이 꺼져 스모크가 항상 2D로만 돌고, 3D 경로는 검증되지 않는다.
+- 브라우저는 새로 받지 않고 `%LOCALAPPDATA%/ms-playwright/chromium-*`의 설치본을 쓴다. 없으면 `CHROME_PATH` 환경변수로 지정한다.
+
+## Windows PowerShell 5.1이 한글 파일을 깨뜨린다
+- 증상: `(Get-Content f -Raw).Replace(...) | Set-Content f`를 거친 파일의 한글 주석이 `?ㅽ봽…`처럼 깨진다.
+- 원인: PowerShell 5.1은 BOM 없는 UTF-8을 ANSI(CP949)로 읽는다.
+- 대응: 편집기 도구를 쓰거나, `[IO.File]::ReadAllText(f, [Text.Encoding]::UTF8)` / `WriteAllText(..., UTF8Encoding($false))`를 쓴다. 고친 뒤 `[媛濡寃]` 같은 깨짐 글자를 grep해서 확인한다.
+
+## `node --test test/`가 Node 24에서 실패한다
+- 증상: `Cannot find module '…\test'`.
+- 원인: Node 24는 디렉터리 인자를 모듈 경로로 해석한다.
+- 대응: `node --test`처럼 인자 없이 실행한다. 이 경우 `test/**/*.test.js`를 자동으로 찾는다.
+
+## 배틀을 끝내는 턴에는 "보호막 해제" 이벤트가 없다
+- 엔진은 승패가 난 턴에 보호막 종료 이벤트를 내보내지 않는다. 그래서 화면은 배틀·컷신을 시작할 때 Stage의 보호막·얼음·오라를 직접 초기화한다. 새 연출 상태를 추가할 때도 같은 위치에서 초기화해야 다음 판으로 상태가 넘어가지 않는다.
+
+## 캐릭터 그림 만들기 (2img)
+- 2img(gpt-image-2)는 투명 배경을 직접 내주지 않는다. "flat solid pure green (#00FF00) chroma-key background"로 생성한 뒤 크로마키로 알파를 만든다. 테두리 픽셀 중앙값을 배경색으로 잡고, 거리 60~150을 알파 0~1로 대응시키고, G를 max(R,B)+6 이하로 눌러 녹색 번짐을 없앤다. 생성 결과가 이미 RGBA 투명일 때도 있으므로, 알파 최솟값을 먼저 확인한다.
+- 실존 IP 이름(포켓몬·디지몬)을 프롬프트에 넣으면 차단될 수 있어, 외형 묘사로만 쓴다.
+- 배치: 알파 바운딩 박스를 잘라 정사각 캔버스(한 변 = 긴 변/0.94)에 발끝이 아래 3% 위로 오도록 붙이고, 768로 줄여 webp(q90)로 저장한다.
+- 이로치는 포즈를 맞추기 위해 원본을 HSV로 재채색한다.
+  - 나루냥: 색상 170~255°를 +62° 이동한다.
+  - 설냥이: 연한 하늘색 털 그림자(채도 0.38 미만, 명도 0.62 초과)를 **털로 분류**한다. 그렇지 않으면 결정과 함께 분홍으로 번진다.
+  - 싸가지냥: 어두운 저채도 털을 황갈색으로 바꾸되, 명도 0.09 미만인 선은 짙은 갈색으로 남긴다.
+- 확인: `node tools/gallery-shot.js`가 10장 모두 768px로 로드되는지 검사하고 `tools/out/gallery.png`를 남긴다.
+
+## GitHub 배포 인증 (gh CLI 미로그인 환경)
+- `gh`가 로그인되어 있지 않아도 git 자격 증명 관리자에 GitHub 토큰이 있다. PowerShell 파이프로 `git credential fill`에 넣으면 "missing protocol field" 오류가 난다(줄바꿈·인코딩 문제).
+- 대응: LF 줄바꿈의 BOM 없는 파일에 `protocol=https` / `host=github.com`을 쓰고, `cmd /c "git credential fill < 파일"`로 넣는다. 응답의 `password=` 값이 토큰이며 절대 출력하지 않는다.

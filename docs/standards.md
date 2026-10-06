@@ -1,0 +1,25 @@
+# 규칙
+
+## 검증 게이트 (커밋·배포 전, 모두 종료 코드 0)
+- `npm test` — 엔진 테스트(`node --test`). 상성표·순서·얼림·풀죽음·보호막·능력 단계·회복 상한·반동 동시 쓰러짐·런 순서·이로치·저장을 확인한다.
+- `npm run sim` — 시작 몬스터 5종 × 1000런 밸런스 시뮬레이션. 모든 몬스터의 클리어율이 35~95% 범위를 벗어나면 실패한다. 결과는 `docs/balance.md`에 다시 쓴다.
+- `npm run smoke` — 로컬 서버 + 헤드리스 Chromium(390×844)으로 3D와 `?2d` 두 경로를 끝까지 돈다. 콘솔 오류 0건, 가로 넘침 0이 아니면 실패한다.
+- `js/data.js` 수치를 바꾸면 세 게이트를 모두 다시 돌린다. 테스트만 돌리고 밸런스를 건너뛰면 안 된다.
+
+## 구조 규칙
+- 스크립트는 일반 `<script>` 전역 방식이다. ES 모듈·번들러·`import`를 쓰지 않는다. 쓰면 `file://`로 열었을 때와 Pages에서 로드 순서가 깨진다. `index.html`의 로드 순서(three → data → engine → sprites → sfx → stage3d → main)를 바꾸지 않는다.
+- `js/engine.js`는 DOM·`window`·`localStorage`를 직접 참조하지 않는다. 저장소는 `createStore(storage)`로 주입받는다. 난수는 인자로 받는다(`rng`). 이 규칙을 어기면 Node 테스트와 시뮬레이션이 깨진다.
+- 화면(`main.js`)은 배틀 상태를 직접 수정하지 않고, `resolveTurn`이 돌려준 이벤트만 재생한다.
+- `Stage`의 연출 메서드는 반드시 resolve하는 Promise를 돌려준다. reject하거나 영원히 대기하면 입력 잠금이 풀리지 않는다.
+- three.js는 `vendor/three.min.js` r128 UMD로 고정한다. r160 이상에는 UMD 빌드가 없어 전역 `THREE`가 사라진다.
+- 실행 중 외부 네트워크(CDN·웹폰트·API)를 쓰지 않는다. 모든 경로는 상대 경로다(Pages 하위 경로 `/pocatmon/`).
+
+## 데이터 규칙
+- 몬스터·기술의 **효과 종류**, 타입, 상성표, 기술 이름은 바꾸지 않는다. 위력·명중·확률·능력치·`TUNING` 값만 조정한다.
+- 런 기록 형식을 바꾸면 런 기록의 `v`와 `isValidRun`을 함께 올린다.
+- 캐릭터 그림은 `assets/mon/<id>.webp`(768×768, 투명, 발끝이 아래 여백 3.1%의 가로 중앙)이고, 이로치는 고양이 3종만 `<id>_shiny.webp`로 둔다. 구도를 바꾸면 `Sprites.FOOT` / `Sprites.ART_TOP`도 함께 바꾼다. 그렇지 않으면 발이 뜨거나 말풍선 위치가 어긋난다.
+
+## 커밋·배포
+- `.dryforge/`, `node_modules`, `tools/out`은 커밋하지 않는다.
+- 저장소 상위 폴더(`files/games/pocatmon/`)의 원본 이미지는 커밋하지 않는다.
+- `main`에 push하면 곧바로 공개 사이트에 반영된다. push 전에 검증 게이트 세 개를 통과시킨다.
