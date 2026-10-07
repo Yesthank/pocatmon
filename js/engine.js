@@ -16,7 +16,8 @@
     if (c < 0xac00 || c > 0xd7a3) return false;
     return (c - 0xac00) % 28 !== 0;
   }
-  function josa(word, pair) { // pair: '은/는' | '이/가' | '을/를' | '과/와'
+  function josa(word, pair) { // pair: '은/는' | '이/가' | '을/를' | '과/와' | '으로/로' | '에게'
+    if (pair.indexOf('/') < 0) return word + pair;
     var p = pair.split('/');
     return word + (hasBatchim(word) ? p[0] : p[1]);
   }
@@ -85,7 +86,8 @@
     var pa = firstAlive(pParty);
     if (pa < 0) throw new Error('no usable monster');
     var b = {
-      kind: kind, areaId: opt.areaId || null, trainer: opt.trainer || null, final: !!opt.final,
+      kind: kind, areaId: opt.areaId || null, gymArea: opt.gymArea || null, trainer: opt.trainer || null, final: !!opt.final,
+      bag: opt.bag || null, prize: 0,
       p: makeSide(pParty, pa), e: makeSide(eParty, 0),
       turn: 0, over: false, winner: null, result: null, needSwitch: false, runTries: 0,
       participants: {}, caught: null, seen: [eParty[0].id], cutsceneDone: false
@@ -108,14 +110,32 @@
     if (!area || !area.wild) throw new Error('no wild area ' + areaId);
     var id = pickWeighted(area.wild, rng);
     var wild = createMon(id, randInt(rng, area.lv[0], area.lv[1]), rng, { uid: -1 });
-    return makeBattle('wild', save.party, [wild], { areaId: areaId });
+    return makeBattle('wild', save.party, [wild], { areaId: areaId, bag: save.bag });
+  }
+  // 라이벌 팀의 'STARTER'/'STARTER2'를 실제 종으로 바꾼다
+  function resolveSpecies(id, save) {
+    if (id !== 'STARTER' && id !== 'STARTER2') return id;
+    var pick = D.RIVAL_PICK[save && save.starter] || 'naru';
+    return id === 'STARTER2' ? D.MONSTERS[pick].evolve.to : pick;
+  }
+  function trainerInfo(tid) {
+    var t = D.TRAINERS[tid];
+    if (!t) throw new Error('unknown trainer ' + tid);
+    return { id: tid, name: t.cls + ' ' + t.name, lines: t.lines, money: t.money, final: !!t.final };
+  }
+  function createTrainerBattle(save, tid, rng, opt) {
+    rng = rng || Math.random; opt = opt || {};
+    var t = D.TRAINERS[tid];
+    if (!t) throw new Error('unknown trainer ' + tid);
+    var team = t.team.map(function (x, i) { return createMon(resolveSpecies(x[0], save), x[1], rng, { shiny: false, uid: -(i + 1) }); });
+    return makeBattle('trainer', save.party, team, { areaId: opt.areaId || null, gymArea: opt.gymArea || null, trainer: trainerInfo(tid), final: !!t.final, bag: save.bag });
   }
   function createGymBattle(save, areaId, rng) {
-    rng = rng || Math.random;
     var area = areaById(areaId);
     if (!area || !area.gym) throw new Error('no gym ' + areaId);
-    var team = area.gym.team.map(function (t, i) { return createMon(t[0], t[1], rng, { shiny: false, uid: -(i + 1) }); });
-    return makeBattle('trainer', save.party, team, { areaId: areaId, trainer: area.gym, final: !!area.final });
+    var b = createTrainerBattle(save, area.gym.trainer, rng, { areaId: areaId, gymArea: areaId });
+    if (hasBadge(save, areaId)) b.prizeMult = 0.5; // 재대결 상금은 절반
+    return b;
   }
 
   // 배틀 시작 연출용 이벤트 (상대 등장 → 내 몬스터 등장)
@@ -409,10 +429,10 @@
   }
 
   // 3~4세대 포획 공식. 반환: { shakes: 0~3, caught }
-  function catchRoll(mon, rng) {
+  function catchRoll(mon, rng, ballMult) {
     var M = maxHp(mon), H = mon.hp, rate = D.MONSTERS[mon.id].catchRate;
     var bonus = mon.status === 'slp' || mon.status === 'frz' ? 2 : mon.status ? 1.5 : 1;
-    var a = Math.floor((3 * M - 2 * H) * rate * T.ballBonus / (3 * M)) * bonus;
+    var a = Math.floor((3 * M - 2 * H) * rate * (ballMult || 1) * T.ballBonus / (3 * M)) * bonus;
     if (a >= 255) return { shakes: 3, caught: true, a: a };
     var bb = Math.floor(1048560 / Math.sqrt(Math.sqrt(16711680 / Math.max(1, a))));
     var ok = 0;
@@ -452,6 +472,86 @@
     var base = D.MONSTERS[foe.id].xp * foe.lv / 7 * (b.kind === 'trainer' ? T.trainerExp : 1) * T.expMult;
     return Math.max(1, Math.floor(base * (participant ? 1 : T.expShare)));
   }
+  /* ── 도구 ── */
+  function takeItem(bag, id) { if (bag && bag[id] > 0) { bag[id]--; if (!bag[id]) delete bag[id]; } }
+  function giveItem(bag, id, n) { bag[id] = Math.min(999, (bag[id] || 0) + (n == null ? 1 : n)); }
+  // 이 몬스터에게 쓸 수 없으면 이유 문장, 쓸 수 있으면 null
+  function itemBlock(mon, it) {
+    if (!mon) return '대상이 없다!';
+    var name = monName(mon);
+    if (it.kind === 'heal') return mon.hp <= 0 ? josa(name, '은/는') + ' 기절해 있다!' : mon.hp >= maxHp(mon) ? name + '의 체력은 이미 가득하다!' : null;
+    if (it.kind === 'cure') return mon.hp <= 0 ? josa(name, '은/는') + ' 기절해 있다!' : !mon.status ? josa(name, '은/는') + ' 상태이상이 아니다!' : null;
+    if (it.kind === 'revive') return mon.hp > 0 ? josa(name, '은/는') + ' 기절하지 않았다!' : null;
+    if (it.kind === 'candy') return mon.lv >= T.maxLevel ? '더 이상 레벨이 오르지 않는다!' : null;
+    return '지금은 쓸 수 없다!';
+  }
+  function applyHeal(mon, it) {
+    var mx = maxHp(mon), before = mon.hp;
+    if (it.kind === 'heal') mon.hp = Math.min(mx, mon.hp + it.hp);
+    else if (it.kind === 'revive') { mon.hp = Math.max(1, Math.floor(mx * it.frac)); mon.status = null; mon.slp = 0; }
+    else if (it.kind === 'cure') { mon.status = null; mon.slp = 0; }
+    return mon.hp - before;
+  }
+  function applyItemInBattle(b, mon, id, ev) {
+    var it = D.ITEMS[id], isActive = mon === active(b, 'p');
+    ev.push({ t: 'item', side: 'player', item: id, uid: mon.uid, text: josa(monName(mon), '에게') + ' ' + josa(it.name, '을/를') + ' 사용했다!' });
+    var gained = applyHeal(mon, it);
+    if (it.kind === 'cure') {
+      if (isActive) b.p.vol.toxN = 0;
+      ev.push({ t: 'cure', side: isActive ? 'player' : null, kind: 'all', text: josa(monName(mon), '은/는') + ' 몸이 개운해졌다!' });
+    } else {
+      ev.push({ t: 'heal', side: isActive ? 'player' : null, amount: gained, hp: mon.hp, maxHp: maxHp(mon), bench: !isActive,
+        text: it.kind === 'revive' ? josa(monName(mon), '은/는') + ' 기운을 되찾았다!' : josa(monName(mon), '은/는') + ' 체력을 ' + gained + ' 회복했다!' });
+    }
+  }
+  // 배틀 밖에서 도구 쓰기 (가방 화면). 반환: { ok, text, ev }
+  function useItem(save, id, partyIdx) {
+    var it = D.ITEMS[id], ev = [];
+    if (!it || !(save.bag[id] > 0)) return { ok: false, text: '도구가 없다!', ev: ev };
+    if (it.kind === 'repel') {
+      save.repel = it.steps; takeItem(save.bag, id);
+      return { ok: true, text: josa(it.name, '을/를') + ' 뿌렸다! ' + it.steps + '걸음 동안 약한 포캣몬이 다가오지 않는다.', ev: ev };
+    }
+    if (it.kind === 'ball' || it.kind === 'key') return { ok: false, text: '지금은 쓸 수 없다!', ev: ev };
+    var mon = save.party[partyIdx], why = itemBlock(mon, it);
+    if (why) return { ok: false, text: why, ev: ev };
+    takeItem(save.bag, id);
+    if (it.kind === 'candy') {
+      gainExp(mon, Math.max(1, expForLevel(mon.lv + 1) - mon.exp), ev);
+      return { ok: true, text: monName(mon) + '의 레벨이 ' + mon.lv + '(으)로 올랐다!'.replace('(으)로', [0, 3, 6].indexOf(mon.lv % 10) >= 0 ? '으로' : '로'), ev: ev };
+    }
+    var g = applyHeal(mon, it);
+    return { ok: true, text: it.kind === 'cure' ? josa(monName(mon), '은/는') + ' 몸이 개운해졌다!' : it.kind === 'revive' ? josa(monName(mon), '은/는') + ' 기운을 되찾았다!' : josa(monName(mon), '은/는') + ' 체력을 ' + g + ' 회복했다!', ev: ev };
+  }
+  function shopItems(save) {
+    var n = save.badges.length, out = [];
+    D.SHOP.forEach(function (t) { if (n >= t.badges) out = out.concat(t.items); });
+    return out;
+  }
+  function buy(save, id, n) {
+    var it = D.ITEMS[id]; n = n || 1;
+    if (!it || !it.price || shopItems(save).indexOf(id) < 0) return { ok: false, text: '팔지 않는 물건이다.' };
+    var cost = it.price * n;
+    if (save.money < cost) return { ok: false, text: '돈이 모자란다!' };
+    save.money -= cost; giveItem(save.bag, id, n);
+    return { ok: true, text: josa(it.name, '을/를') + ' ' + n + '개 샀다!' };
+  }
+
+  /* ── 진화 ── */
+  function canEvolve(mon) { var ev = D.MONSTERS[mon.id].evolve; return !!(ev && mon.lv >= ev.lv && mon.hp > 0); }
+  function evolveMon(save, mon) {
+    var to = D.MONSTERS[mon.id].evolve.to, from = mon.id, before = maxHp(mon);
+    mon.id = to;
+    mon.hp = Math.min(maxHp(mon), mon.hp + (maxHp(mon) - before));
+    if (save) { save.dex.seen[to] = 1; save.dex.caught[to] = 1; }
+    return { from: from, to: to };
+  }
+  function pendingEvolutions(save) {
+    var out = [];
+    save.party.forEach(function (m, i) { if (canEvolve(m)) out.push(i); });
+    return out;
+  }
+
   // 쓰러짐: 이벤트를 내고, 상대 몬스터면 그 자리에서 경험치를 준다(원작처럼 턴 끝 독 데미지 전에)
   function faintEv(b, side, mon, ev) {
     ev.push({ t: 'faint', side: side, id: mon.id, text: josa(monName(mon), '은/는') + ' 쓰러졌다!' });
@@ -524,6 +624,16 @@
     // 행동 검증 — 할 수 없는 행동은 턴을 쓰지 않고 거절한다
     if (pAct.t === 'run' && b.kind !== 'wild') { ev.push({ t: 'msg', text: '승부 도중에 도망칠 수는 없다!' }); return ev; }
     if (pAct.t === 'ball' && b.kind !== 'wild') { ev.push({ t: 'msg', text: '남의 포캣몬은 잡을 수 없다!' }); return ev; }
+    if (pAct.t === 'ball' || pAct.t === 'item') {
+      var iid = pAct.item || (pAct.t === 'ball' ? 'ball' : null), it = D.ITEMS[iid];
+      if (!it || !it.battle || (pAct.t === 'ball') !== (it.kind === 'ball')) { ev.push({ t: 'msg', text: '지금은 쓸 수 없다!' }); return ev; }
+      if (b.bag && !(b.bag[iid] > 0)) { ev.push({ t: 'msg', text: it.name + '이(가) 없다!' }); return ev; }
+      if (pAct.t === 'item') {
+        var tgt = b.p.party[pAct.target];
+        var why = itemBlock(tgt, it);
+        if (why) { ev.push({ t: 'msg', text: why }); return ev; }
+      }
+    }
     if (pAct.t === 'switch' && !canSwitchTo(b, pAct.to)) { ev.push({ t: 'msg', text: '그 포캣몬으로는 교체할 수 없다!' }); return ev; }
     if (pAct.t === 'move') {
       var pm = active(b, 'p');
@@ -541,9 +651,14 @@
         return ev;
       }
       ev.push({ t: 'run', ok: false, text: '도망칠 수 없었다!' });
+    } else if (pAct.t === 'item') {
+      takeItem(b.bag, pAct.item);
+      applyItemInBattle(b, b.p.party[pAct.target], pAct.item, ev);
     } else if (pAct.t === 'ball') {
-      var wild = active(b, 'e'), roll = catchRoll(wild, rng);
-      ev.push({ t: 'ball', shakes: roll.shakes, caught: roll.caught, text: '포캣볼을 던졌다!' });
+      var ballId = pAct.item || 'ball';
+      takeItem(b.bag, ballId);
+      var wild = active(b, 'e'), roll = catchRoll(wild, rng, D.ITEMS[ballId].mult);
+      ev.push({ t: 'ball', item: ballId, shakes: roll.shakes, caught: roll.caught, text: D.ITEMS[ballId].name + '을(를) 던졌다!'.replace('을(를)', hasBatchim(D.ITEMS[ballId].name) ? '을' : '를') });
       if (roll.caught) {
         ev.push({ t: 'msg', text: '신난다! ' + josa(monName(wild), '을/를') + ' 잡았다!' });
         b.over = true; b.result = 'caught'; b.winner = 'player'; b.caught = wild;
@@ -618,6 +733,9 @@
       if (b.trainer) {
         ev.push({ t: 'msg', text: josa(b.trainer.name, '과/와') + '의 승부에서 이겼다!' });
         ev.push({ t: 'line', side: 'enemy', trainer: true, text: b.trainer.lines.lose });
+        var last = b.e.party[b.e.party.length - 1];
+        b.prize = Math.floor((b.trainer.money || 0) * last.lv * (b.prizeMult || 1));
+        if (b.prize > 0) ev.push({ t: 'money', amount: b.prize, text: '상금으로 ' + b.prize + '원을 받았다!' });
       }
       ev.push({ t: 'end', result: 'win' });
       return;
@@ -655,7 +773,9 @@
     rng = rng || Math.random;
     if (D.STARTERS.indexOf(starter) < 0) throw new Error('unknown starter ' + starter);
     var mon = createMon(starter, T.startLevel, rng, { shiny: false, uid: 1 });
-    var save = { v: 2, starter: starter, party: [mon], box: [], dex: { seen: {}, caught: {} }, badges: [], cleared: false, nextUid: 2, area: D.AREAS[0].id };
+    var save = { v: 3, starter: starter, party: [mon], box: [], dex: { seen: {}, caught: {} }, badges: [], cleared: false, nextUid: 2, area: D.AREAS[0].id,
+      money: T.startMoney, bag: {}, flags: {}, beaten: {}, visited: {}, repel: 0, pos: null, respawn: null };
+    Object.keys(T.startItems).forEach(function (k) { save.bag[k] = T.startItems[k]; });
     save.dex.seen[starter] = 1; save.dex.caught[starter] = 1;
     return save;
   }
@@ -677,24 +797,31 @@
     if (i === 0) return true;
     return save.badges.indexOf(D.AREAS[i - 1].id) >= 0;
   }
-  function hasBadge(save, id) { return save.badges.indexOf(id) >= 0; }
+  function hasBadge(save, id) { return !!(save && save.badges && save.badges.indexOf(id) >= 0); }
 
   // 배틀이 끝난 뒤 저장 데이터에 반영한다. 반환: { badge, cleared, caughtTo, whiteout }
   function finishBattle(save, b) {
-    var out = { badge: null, cleared: false, caughtTo: null, whiteout: false };
+    var out = { badge: null, cleared: false, caughtTo: null, whiteout: false, prize: 0, evolutions: [] };
     markSeen(save, b.seen);
     if (b.result === 'caught' && b.caught) out.caughtTo = addCaught(save, b.caught);
-    if (b.result === 'win' && b.kind === 'trainer' && b.areaId && !hasBadge(save, b.areaId)) {
-      save.badges.push(b.areaId); out.badge = b.areaId;
-      if (b.final) { save.cleared = true; out.cleared = true; }
+    if (b.result === 'win' && b.kind === 'trainer') {
+      if (b.trainer && b.trainer.id) save.beaten[b.trainer.id] = 1;
+      if (b.prize) { save.money = Math.min(T.moneyMax, save.money + b.prize); out.prize = b.prize; }
+      if (b.gymArea && !hasBadge(save, b.gymArea)) {
+        save.badges.push(b.gymArea); out.badge = b.gymArea;
+        if (b.final) { save.cleared = true; out.cleared = true; }
+      }
     }
-    if (b.result === 'lose') { healParty(save); out.whiteout = true; }
+    out.evolutions = b.result === 'lose' ? [] : pendingEvolutions(save);
+    if (b.result === 'lose' || (b.result !== 'ran' && !canExplore(save))) { healParty(save); out.whiteout = true; }
     return out;
   }
 
   // 파티 ↔ 보관함 정리
+  function aliveExcept(party, idx) { return party.some(function (m, i) { return i !== idx && isAlive(m); }); }
   function moveToBox(save, partyIdx) {
     if (save.party.length <= 1 || !save.party[partyIdx]) return false;
+    if (!aliveExcept(save.party, partyIdx)) return false;
     save.box.push(save.party.splice(partyIdx, 1)[0]);
     return true;
   }
@@ -705,6 +832,7 @@
   }
   function swapPartyBox(save, partyIdx, boxIdx) {
     if (!save.party[partyIdx] || !save.box[boxIdx]) return false;
+    if (!isAlive(save.box[boxIdx]) && !aliveExcept(save.party, partyIdx)) return false;
     var t = save.party[partyIdx]; save.party[partyIdx] = save.box[boxIdx]; save.box[boxIdx] = t;
     return true;
   }
@@ -725,8 +853,25 @@
     if (m.status !== null && !D.STATUS[m.status]) return false;
     return Number.isInteger(m.hp) && m.hp >= 0 && m.hp <= maxHp(m);
   }
+  // v2(맵 없는 메뉴형) 저장을 v3로 옮긴다. 진행·파티·도감은 그대로, 돈·가방·위치는 새로 준다.
+  function migrateSave(s) {
+    if (!s || typeof s !== 'object' || s.v !== 2) return s;
+    var t = JSON.parse(JSON.stringify(s));
+    t.v = 3;
+    t.money = T.startMoney + 600 * (t.badges ? t.badges.length : 0);
+    t.bag = {}; Object.keys(T.startItems).forEach(function (k) { t.bag[k] = T.startItems[k] * 2; });
+    t.flags = { got_starter: 1, intro: 1, migrated_v2: 1 };
+    t.beaten = { rival_1: 1 }; (t.badges || []).forEach(function (a) { var ar = areaById(a); if (ar && ar.gym) t.beaten[ar.gym.trainer] = 1; });
+    t.visited = {}; t.repel = 0; t.pos = null; t.respawn = null;
+    return t;
+  }
+  function isValidPos(p) { return p === null || (p && typeof p.map === 'string' && Number.isInteger(p.x) && Number.isInteger(p.y) && ['up', 'down', 'left', 'right'].indexOf(p.dir) >= 0); }
   function isValidSave(s) {
-    if (!s || typeof s !== 'object' || s.v !== 2) return false;
+    if (!s || typeof s !== 'object' || s.v !== 3) return false;
+    if (!Number.isInteger(s.money) || s.money < 0 || !s.bag || typeof s.bag !== 'object') return false;
+    if (!Object.keys(s.bag).every(function (k) { return D.ITEMS[k] && Number.isInteger(s.bag[k]) && s.bag[k] >= 0; })) return false;
+    if (!s.flags || typeof s.flags !== 'object' || !s.beaten || typeof s.beaten !== 'object' || !s.visited || typeof s.visited !== 'object') return false;
+    if (!Number.isInteger(s.repel) || !isValidPos(s.pos) || !isValidPos(s.respawn)) return false;
     if (D.STARTERS.indexOf(s.starter) < 0) return false;
     if (!Array.isArray(s.party) || s.party.length < 1 || s.party.length > T.partyMax || !Array.isArray(s.box)) return false;
     if (!s.party.every(isValidMon) || !s.box.every(isValidMon)) return false;
@@ -759,7 +904,7 @@
       load: function () {
         var raw = get(KEY_SAVE);
         if (!raw) return null;
-        try { var s = JSON.parse(raw); return isValidSave(s) ? s : null; } catch (e) { return null; }
+        try { var s = migrateSave(JSON.parse(raw)); return isValidSave(s) ? s : null; } catch (e) { return null; }
       },
       clear: function () { del(KEY_SAVE); del(KEY_OLD_RUN); }
     };
@@ -774,6 +919,9 @@
     active: active, calcDamage: calcDamage, effSpeed: effSpeed, catchRoll: catchRoll, escapeRoll: escapeRoll,
     gainExp: gainExp, expYield: expYield, chooseEnemyAction: chooseEnemyAction, estimate: estimate,
     resolveTurn: resolveTurn, forceSwitch: forceSwitch, canSwitchTo: canSwitchTo, statusImmune: statusImmune,
+    createTrainerBattle: createTrainerBattle, resolveSpecies: resolveSpecies, trainerInfo: trainerInfo,
+    useItem: useItem, itemBlock: itemBlock, takeItem: takeItem, giveItem: giveItem, shopItems: shopItems, buy: buy,
+    canEvolve: canEvolve, evolveMon: evolveMon, pendingEvolutions: pendingEvolutions, migrateSave: migrateSave,
     newGame: newGame, addCaught: addCaught, markSeen: markSeen, healParty: healParty, canExplore: canExplore,
     areaById: areaById, areaIndex: areaIndex, areaOpen: areaOpen, hasBadge: hasBadge, finishBattle: finishBattle,
     moveToBox: moveToBox, moveToParty: moveToParty, swapPartyBox: swapPartyBox, makeLead: makeLead,

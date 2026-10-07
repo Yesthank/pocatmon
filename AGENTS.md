@@ -1,39 +1,41 @@
 # 포캣몬 배틀
 
-오리지널 몬스터 20종(18타입마다 고양이 한 마리 이상 + 메탈가디언몬·블랙 메탈가디언몬)을 탐험·포획해 최대 3마리 파티로 관장 6명과 정상의 수호자에게 도전하는 **1인용 턴제 수집 웹 게임**이다. 휴대폰 세로 화면에서 한 손으로 5~10분씩 이어서 즐긴다. 전투는 실제 포켓몬 규칙(5세대 이후 데미지·물리/특수·PP·상태이상·랭크·교체·포획 공식)을 따른다. 빌드 없는 정적 HTML/JS(three.js r128 + 2D 대체)로 만들었고, GitHub Pages(`https://yesthank.github.io/pocatmon/`)로 공개 배포한다. 서버·계정·온라인 기능은 없고, 유지보수는 가끔 하는 정도를 상정한다.
+오리지널 몬스터 38종(18타입 고양이 + 진화형 18종 + 메탈가디언몬·블랙 메탈가디언몬)을 걸어 다니는 탑뷰 필드에서 모으는 **1인용 몬스터 수집 RPG 웹 게임**이다. 마을·수풀·트레이너·관장 6명·정상의 수호자가 있고, 도구·상점·돈·진화·부탁(퀘스트)·라이벌이 있다. 휴대폰 세로 화면에서 한 손(십자 버튼 + A, 또는 탭 이동)으로 5~10분씩 이어서 즐긴다. 전투는 실제 포켓몬 규칙(5세대 이후 데미지·물리/특수·PP·상태이상·랭크·교체·포획 공식)을 따르고, 필드·이벤트 구조는 Tuxemon·Pokémon Essentials의 설계만 참고했다(코드·에셋 미차용). 빌드 없는 정적 HTML/JS(three.js r128 + 2D 대체)로 만들었고, GitHub Pages(`https://yesthank.github.io/pocatmon/`)로 공개 배포한다. 서버·계정·온라인 기능은 없고, 유지보수는 가끔 하는 정도를 상정한다.
 
 ## 프로젝트 구조
 ```
 battle/
 ├── CLAUDE.md / AGENTS.md      → 이 안내(두 파일 내용 동일)
-├── index.html                 → 진입점, 스크립트 7개를 순서대로 로드
+├── index.html                 → 진입점, 스크립트 10개를 순서대로 로드
 ├── js/
 │   └── AGENTS.md              → 게임 런타임(데이터·엔진·그림·효과음·경기장·화면)의 경계와 불변식
 ├── tools/
 │   ├── AGENTS.md              → 서버·헤드리스 스모크·밸런스 시뮬레이션·그림 확인 도구
 │   └── art/                   → 2img 그림 후처리(크로마키·배치, 이로치 재채색) Python 스크립트
-├── test/engine.test.js        → 엔진 테스트
-├── assets/                    → bg/ 배경 8장, mon/ 캐릭터 일러스트(webp, 일반 20 + 이로치 18)
+├── test/                      → engine.test.js(전투·도구·진화·저장), world.test.js(맵 형식·도달성·시야·걸음)
+├── assets/                    → bg/ 배경 8장, mon/ 캐릭터 일러스트(webp, 일반 38 + 이로치 36)
 ├── vendor/three.min.js        → three.js r128 UMD (수정 금지)
 └── docs/
-    ├── architecture.md        → 스크립트 구성, 기술 버튼 한 번의 흐름, 3D/2D 경계
-    ├── business-rules.md      → 상성·데미지·턴 처리·상태이상·포획·성장·진행 규칙
+    ├── architecture.md        → 스크립트 구성, 화면·필드·배틀 흐름, 3D/2D·필드 렌더러 경계
+    ├── business-rules.md      → 상성·데미지·턴 처리·상태이상·포획·진화·도구·상점·필드·진행 규칙
     ├── security.md            → 저장 데이터, 공개 범위, 배포 자격 증명
     ├── standards.md           → 검증 게이트, 구조·데이터·커밋 규칙
     ├── engineering-notes.md   → 함정(file:// 2D, PowerShell 한글 깨짐, 헤드리스 WebGL, 2img 키아웃)
     ├── operations.md          → 설치·실행·검증·배포 명령
-    ├── contracts.md           → localStorage 키·저장 데이터 형식(v2), 공개 주소·URL 플래그
+    ├── contracts.md           → localStorage 키·저장 데이터 형식(v3, v2 자동 이전), 공개 주소·URL 플래그
     ├── balance.md             → 시뮬레이션 결과(npm run sim이 덮어씀)
     └── tracking/
         ├── status.md          → 완료·검증 상태, 남은 일
         ├── findings.md        → 지금 못 고친 문제
-        └── decisions/         → 그림 방식, three r128, (v1) 패배 시 처음부터, v2 탐험·포획 구조
+        └── decisions/         → 그림 방식, three r128, (v1) 패배 시 처음부터, v2 탐험·포획, v3 탑뷰 필드 RPG
 ```
 
 ## 반드시 지킬 것
 - 배포(push) 전 `npm test`, `npm run sim`(관장별 첫 도전 승률 30~97%, 스타터별 클리어율 90% 이상), `npm run smoke`(콘솔 오류 0, 가로 넘침 0) 세 개가 모두 종료 코드 0이어야 한다. `main`에 push하면 곧바로 공개된다.
 - 전멸해도 수집한 몬스터·배지는 잃지 않는다(사용자 결정, ADR 0004). 파티는 최대 3마리다.
-- 몬스터·기술 id는 저장 데이터에 들어가므로 바꾸거나 지우지 않는다.
+- 몬스터·기술·도구·맵·트레이너 id는 저장 데이터에 들어가므로 바꾸거나 지우지 않는다.
+- 맵(`js/maps.js`)을 고치면 `npm test`(world.test.js의 형식·도달성·시야 검사)를 먼저 통과시킨다.
+- Tuxemon(GPL-3.0)·Pokémon Essentials의 코드·에셋·데이터를 가져오지 않는다. 설계만 참고한다(ADR 0005).
 - `engine.js`·`data.js`는 DOM을 모르는 순수 로직으로 유지한다. 화면은 엔진 이벤트만 재생한다.
 - 실행 중에는 외부 네트워크(CDN·웹폰트·API)를 쓰지 않고, 상대 경로만 쓴다. three는 r128 UMD로 고정한다.
 - 상위 폴더의 원본 시트 이미지와 GitHub 토큰은 절대 커밋하지 않는다.
@@ -43,7 +45,8 @@ battle/
 - 기술·수치·상성을 바꾸기 전: `docs/business-rules.md`(효과 종류는 고정하고 수치만 조정). 바꾼 뒤에는 `npm run sim`을 실행한다.
 - 캐릭터 그림을 바꾸기 전: `docs/engineering-notes.md`에 적힌 2img 키아웃·배치 절차, 그리고 그림 구도와 `Sprites.FOOT/ART_TOP`의 연동.
 - 저장 형식을 건드리기 전: `docs/contracts.md`(버전 `v`와 `isValidSave`를 함께 올리는 규칙).
-- 연출(Stage) 메서드를 추가하기 전: 3D와 2D 두 구현에 같은 이름으로 넣고, 반드시 resolve하는 Promise를 돌려준다.
+- 연출(Stage) 메서드를 추가하기 전: 3D와 2D 두 구현에 같은 이름으로 넣고, 반드시 resolve하는 Promise를 돌려준다. 필드 렌더러(`Field`)도 같은 규칙이다.
+- 이벤트(NPC 대화·부탁)를 추가하기 전: `js/maps.js`의 SCRIPTS 명령 목록과 `docs/business-rules.md`의 필드 절.
 
 ## 문제가 생기면
 - **바로 사용자에게 알릴 것:** 공개 사이트가 열리지 않거나 검은 화면만 나올 때, 3D·2D 둘 다에서 입력 잠금이 풀리지 않아 진행이 멈출 때, 저장소에 원본 이미지나 토큰이 커밋되었을 때, 클리어율이 범위를 벗어난 채 배포되었을 때.

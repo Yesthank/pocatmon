@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>필드 테스트</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; background: #0b1020; color: #dfe6f5; font: 12px/1.4 sans-serif; }
+  #field { position: relative; width: 390px; height: 560px; overflow: hidden; background: #000; }
+  #log { padding: 6px 8px; white-space: pre-wrap; }
+  .bubble { position: absolute; transform: translate(-50%, -100%); background: #fff; color: #222; border: 2px solid #333;
+    border-radius: 8px; padding: 2px 6px; font-size: 11px; pointer-events: none; z-index: 5; white-space: nowrap; display: none; }
+</style>
+</head>
+<body>
+<div id="field"></div>
+<div id="log"></div>
+<script src="../js/maps.js"></script>
+<script src="../js/sprites.js"></script>
+<script src="../js/field.js"></script>
+<script>
+(function () {
+  'use strict';
+  // 쿼리: ?quick 테마 순회 생략, ?theme=volcano 한 테마만, ?noshot 스크린샷 대기 없이 진행
+  var q = new URLSearchParams(location.search);
+  var host = document.getElementById('field');
+  var logEl = document.getElementById('log');
+  function log(s) { logEl.textContent += s + '\n'; }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  var METHODS = ['loadMap', 'setEntities', 'updateEntity', 'removeEntity', 'moveEntity', 'faceEntity', 'bump', 'emote', 'transition',
+    'screenOf', 'tileAtScreen', 'setPaused', 'resize', 'dispose'];
+  var THEMES = ['town', 'forest', 'coast', 'volcano', 'glacier', 'alley', 'temple', 'summit', 'ruins'];
+
+  if (!window.Field || !window.PMaps) { console.error('Field 또는 PMaps 전역이 없음'); window.__done = true; return; }
+  var f = Field.create(host);
+  window.__field = f;
+  log('mode: ' + f.mode);
+  if (f.mode !== 'canvas') console.error('mode != canvas');
+  METHODS.forEach(function (n) { if (typeof f[n] !== 'function') console.error('MISSING method ' + n); });
+
+  // 모든 Promise 는 제한 시간 안에 resolve 되어야 한다(어기면 console.error)
+  var failed = [];
+  function chk(name, p, ms) {
+    if (!p || typeof p.then !== 'function') { console.error('NO PROMISE ' + name); failed.push(name); return Promise.resolve(); }
+    var hung = false;
+    return Promise.race([p.then(function () { return 'ok'; }, function (e) { console.error('REJECT ' + name + ' ' + e); failed.push(name); return 'rej'; }),
+      wait(ms || 3000).then(function () { hung = true; return 'hang'; })])
+      .then(function (r) { if (hung || r === 'hang') { console.error('HANG ' + name); failed.push(name); } });
+  }
+  // 스크린샷 손잡기: 이름을 내걸고, 러너가 찍은 뒤 __ack 로 답한다(최대 8초)
+  async function shot(name) {
+    if (q.has('noshot')) return;
+    f.setPaused(true);
+    window.__shot = name;
+    var t0 = Date.now();
+    while (window.__ack !== name && Date.now() - t0 < 8000) await wait(40);
+    f.setPaused(false);
+  }
+  function walk(id, dirs, ms) {
+    var p = Promise.resolve();
+    dirs.forEach(function (d, i) { p = p.then(function () { return chk('move ' + id + ' ' + d + i, f.moveEntity(id, d, ms ? { ms: ms } : undefined), 1000); }); });
+    return p;
+  }
+  // 말풍선 위치·탭 좌표 왕복 확인
+  function bubble(id, text) {
+    var b = document.getElementById('bb-' + id);
+    if (!b) { b = document.createElement('div'); b.className = 'bubble'; b.id = 'bb-' + id; host.appendChild(b); }
+    var p = f.screenOf(id);
+    if (!p || !isFinite(p.x) || !isFinite(p.y)) { console.error('screenOf invalid ' + id); return; }
+    b.textContent = text; b.style.left = p.x + 'px'; b.style.top = (p.y - 4) + 'px'; b.style.display = 'block';
+  }
+  function hideBubbles() { Array.prototype.forEach.call(document.querySelectorAll('.bubble'), function (b) { b.style.display = 'none'; }); }
+  function checkTap(id, tx, ty) {
+    var p = f.screenOf(id);
+    var t = f.tileAtScreen(p.x, p.y + f.cssTile * 0.6);
+    if (t.x !== tx || t.y !== ty) console.error('tileAtScreen mismatch ' + id + ' got ' + t.x + ',' + t.y + ' want ' + tx + ',' + ty);
+  }
+
+  /* 테마 시험 맵(22×20): LEGEND 문자 전부 + 건물 5종. 건물 칸은 buildings 로 '#'를 찍는다. */
+  function themeMap(th) {
+    var inner = [
+      '....................', // 1
+      '....................', // 2
+      '....................', // 3
+      '...=.....=......=...', // 4
+      'F..==========p====..', // 5
+      'FF..W......p...TcccB', // 6
+      '....W......p....cc.B', // 7
+      '.r..W......p.....TTB', // 8
+      '....W......p...r...B', // 9
+      '.ff.f...=pppp=..F...', // 10
+      '..S.....=,,,,=.F....', // 11
+      ',,,,,...=,,,,=..,,,,', // 12
+      ',,,,,,..=,,,,=.,,,,,', // 13
+      '..,,~~~~b~~~~~~,,...', // 14
+      '.ss.~~~~b~~~~~..nnn.', // 15
+      'sss..~~~b~~~..nniin.', // 16
+      '.FFs....=....LLL.ii.', // 17
+      'BBB.r...=T.TLLLL..cc'  // 18
+    ];
+    var rows = ['TTTTTTTTTTTTTTTTTTTTTT'];
+    inner.forEach(function (r) { rows.push('T' + (r + '....................').slice(0, 20) + 'T'); });
+    rows.push('TTTTTTTTTTTTTTTTTTTTTT');
+    var buildings = [
+      { kind: 'center', x: 2, y: 1 }, { kind: 'shop', x: 8, y: 1 }, { kind: 'lab', x: 15, y: 1 },
+      { kind: 'gym', x: 6, y: 6 }, { kind: 'house', x: 13, y: 7 }
+    ];
+    var grid = rows.map(function (r) { return r.split(''); });
+    buildings.forEach(function (b) {
+      var B = PMaps.BUILDINGS[b.kind];
+      for (var y = b.y; y < b.y + B.h; y++) for (var x = b.x; x < b.x + B.w; x++) grid[y][x] = '#';
+    });
+    var tiles = grid.map(function (r) { return r.join(''); });
+    tiles.forEach(function (r, i) { if (r.length !== 22) console.error('test map row ' + i + ' length ' + r.length); });
+    // 사용 문자 확인: LEGEND 전부
+    var used = {}; tiles.join('').split('').forEach(function (c) { used[c] = 1; });
+    Object.keys(PMaps.LEGEND).forEach(function (c) { if (!used[c]) console.error('test map lacks LEGEND char ' + c); });
+    return { name: 'test-' + th, theme: th, tiles: tiles, buildings: buildings, signs: [{ x: 3, y: 11, text: 'test' }], start: { x: 12, y: 10, dir: 'down' } };
+  }
+
+  (async function () {
+    try {
+      var home = PMaps.MAPS.home;
+      await chk('loadMap home', f.loadMap(home), 5000);
+      var ents = [{ id: 'player', kind: 'player', look: 'player', x: home.start.x, y: home.start.y, dir: home.start.dir }];
+      home.npcs.forEach(function (n) { ents.push({ id: n.id, kind: 'npc', look: n.look, x: n.x, y: n.y, dir: n.dir }); });
+      home.items.forEach(function (it) { ents.push({ id: it.id, kind: 'item', x: it.x, y: it.y }); });
+      ents.push({ id: 'buddy', kind: 'cat', look: { fur: '#f0a040' }, x: home.start.x, y: home.start.y - 1, dir: 'down' });
+      // 'mon' 엔티티: 일러스트를 2칸 높이로 세운다(실패 시 실루엣)
+      var monURL = window.Sprites ? Sprites.spriteURL('metal') : '../assets/mon/metal.webp';
+      ents.push({ id: 'guardian', kind: 'mon', img: monURL, size: 2, x: 11, y: 12, dir: 'left' });
+      ents.push({ id: 'ghostmon', kind: 'mon', img: '../assets/mon/__missing__.webp', size: 1.5, x: 3, y: 8, dir: 'right' });
+      ents.push({ id: 'inline', kind: 'npc', look: { skin: '#e0b090', hair: 'long', hairColor: '#2a2a2a', shirt: '#e05a5a', pants: '#2a2a3a', shoes: '#fff', apron: '#ffffff' }, x: 11, y: 4, dir: 'down' });
+      f.setEntities(ents);
+      await wait(400);
+      checkTap('player', home.start.x, home.start.y);
+
+      // 플레이어 걷기: 왼쪽 2 → 아래 2(연구소 옆) → 라이벌이 알아챈다
+      await walk('player', ['left', 'left', 'down', 'down']);
+      f.faceEntity('rival', 'up');
+      var em = f.emote('rival', '!');
+      await wait(260);
+      bubble('guardian', '메탈가디언몬');
+      await shot('home');
+      await chk('emote !', em, 2000);
+      hideBubbles();
+      await walk('player', ['down']);
+      await chk('bump lab', f.bump('player', 'left'), 800);
+      f.faceEntity('player', 'down');
+      checkTap('player', 7, 12);
+      await chk('emote ? mon', f.emote('guardian', '?'), 2000);
+      await chk('emote ♥ kid', f.emote('kid', '♥'), 2000);
+      await chk('emote … prof', f.emote('prof', '…'), 2000);
+      await chk('emote ♪ mom', f.emote('mom', '♪'), 2000);
+      await chk('emote bogus', f.emote('mom', 'zzz'), 2000);
+      await chk('move missing', f.moveEntity('nobody', 'up'), 500);
+      await chk('emote missing', f.emote('nobody', '!'), 500);
+      f.updateEntity('kid', { x: 12, y: 8, dir: 'left' });
+      f.updateEntity('buddy', { hidden: true });
+      f.updateEntity('buddy', { hidden: false, x: 8, y: 12 });
+      f.removeEntity('home_ball');
+      // 배틀 전환(중간 프레임 캡처) → 검은 화면 유지 → fadeIn
+      var bt = f.transition('battle');
+      await wait(560);
+      await shot('transition_mid');
+      await chk('battle', bt, 2500);
+      await wait(150);
+      await chk('fadeIn', f.transition('fadeIn'), 1500);
+      await walk('player', ['right', 'right', 'right', 'up']);
+      await shot('home_after');
+
+      // 테마별 시험 맵
+      if (!q.has('quick')) {
+        var list = q.get('theme') ? [q.get('theme')] : THEMES;
+        var looks = ['hiker', 'girl', 'swimmer', 'leaderVolcano', 'leaderGlacier', 'punk', 'leaderTemple', 'mystic', 'cloak', 'nurse', 'clerk', 'leaderForest', 'leaderCoast', 'leaderAlley'];
+        for (var i = 0; i < list.length; i++) {
+          var th = list[i];
+          await chk('fadeOut ' + th, f.transition('fadeOut'), 1500);
+          var m = themeMap(th);
+          await chk('loadMap ' + th, f.loadMap(m), 5000);
+          f.setEntities([
+            { id: 'player', kind: 'player', look: 'player', x: 12, y: 10, dir: 'down' },
+            { id: 'cat', kind: 'cat', look: { fur: ['#f0a040', '#8a8a9a', '#f4f4f4', '#3a3a44'][i % 4] }, x: 12, y: 9, dir: 'down' },
+            { id: 'a', kind: 'npc', look: looks[i % looks.length], x: 10, y: 12, dir: 'right' },
+            { id: 'b', kind: 'npc', look: looks[(i + 5) % looks.length], x: 15, y: 10, dir: 'left' },
+            { id: 'c', kind: 'npc', look: looks[(i + 9) % looks.length], x: 8, y: 13, dir: 'up' },
+            { id: 'd', kind: 'npc', look: ['professor', 'rival', 'elder', 'kid'][i % 4], x: 16, y: 13, dir: 'down' },
+            { id: 'ball', kind: 'item', x: 13, y: 13 }
+          ]);
+          await chk('fadeIn ' + th, f.transition('fadeIn'), 1500);
+          var p1 = walk('player', ['down', 'down']);
+          var p2 = walk('cat', ['down', 'down']);
+          await Promise.all([p1, p2]);
+          f.faceEntity('a', 'right');
+          var e2 = f.emote('a', ['!', '?', '♥', '…', '♪'][i % 5]);
+          await wait(250);
+          await shot('theme_' + th);
+          await chk('emote ' + th, e2, 2000);
+          // 두 번째 시점: 숨긴 카메라 대상으로 북동쪽(연구소·절벽·석벽·덤불)을 본다
+          if (!q.has('noshot')) {
+            f.follow('cam');
+            f.removeEntity('cam');
+            f.addEntity({ id: 'cam', kind: 'npc', look: 'kid', x: i % 2 ? 6 : 15, y: 6, hidden: true });
+            await wait(80);
+            await shot('theme_' + th + '_b');
+            f.follow(null);
+            f.removeEntity('cam');
+          }
+        }
+      }
+      // 실제 맵 데이터(PMaps.MAPS) 전부: 시작 칸 + NPC·아이템
+      if (!q.has('quick')) {
+        var ids = Object.keys(PMaps.MAPS).filter(function (k) { return k !== 'home'; });
+        for (var mi = 0; mi < ids.length; mi++) {
+          var mp = PMaps.MAPS[ids[mi]];
+          await chk('loadMap ' + ids[mi], f.loadMap(mp), 5000);
+          var st = mp.start || { x: 1, y: 1, dir: 'down' };
+          var me = [{ id: 'player', kind: 'player', look: 'player', x: st.x, y: st.y, dir: st.dir || 'down' }];
+          (mp.npcs || []).forEach(function (n) { me.push({ id: n.id, kind: 'npc', look: n.look, x: n.x, y: n.y, dir: n.dir }); });
+          (mp.items || []).forEach(function (it) { me.push({ id: it.id, kind: 'item', x: it.x, y: it.y }); });
+          f.setEntities(me);
+          await wait(120);
+          await shot('map_' + ids[mi]);
+        }
+      }
+      // 사람 모양 전부(LOOKS) 한 화면에: 정면 → 여러 방향
+      var plain = [];
+      for (var yy = 0; yy < 15; yy++) plain.push(yy === 14 ? 'TTTTTTTTTT' : (yy % 3 === 0 ? 'pppppppppp' : '..........'));
+      await chk('loadMap looks', f.loadMap({ theme: 'town', tiles: plain, buildings: [] }), 5000);
+      var keys = Object.keys(PMaps.LOOKS), le = [];
+      keys.forEach(function (k, n) { le.push({ id: 'l' + n, kind: 'npc', look: k, x: (n % 5) * 2, y: 1 + Math.floor(n / 5) * 3, dir: 'down' }); });
+      le.push({ id: 'cat1', kind: 'cat', look: { fur: '#f0a040' }, x: 8, y: 13, dir: 'down' });
+      le.push({ id: 'cat2', kind: 'cat', look: { fur: '#8a8a9a' }, x: 9, y: 13, dir: 'left' });
+      le.push({ id: 'it', kind: 'item', x: 6, y: 13 });
+      le.push({ id: 'unknown', kind: 'npc', look: 'no-such-look', x: 4, y: 13, dir: 'down' });
+      le.push({ id: 'player', kind: 'player', look: 'player', x: 2, y: 13, dir: 'down' });
+      f.setEntities(le);
+      f.follow('l12');
+      await wait(120);
+      await shot('looks');
+      var dirs = ['up', 'left', 'right'];
+      keys.forEach(function (k, n) { f.faceEntity('l' + n, dirs[n % 3]); });
+      // 걷는 프레임도 한 장(일부는 걷는 중)
+      keys.forEach(function (k, n) { if (n % 2) f.moveEntity('l' + n, dirs[n % 3] === 'up' ? 'down' : dirs[n % 3], { ms: 900 }); });
+      await wait(150);
+      await shot('looks_dirs');
+      await wait(900);
+      f.follow(null);
+      // 일시정지·크기 변경·정리
+      f.setPaused(true); f.setPaused(false);
+      host.style.width = '360px'; f.resize(); await wait(100); host.style.width = '390px'; f.resize();
+      var f2 = Field.create(host);
+      var pending = f2.moveEntity('x', 'up');
+      f2.setEntities([{ id: 'z', kind: 'player', look: 'player', x: 1, y: 1 }]);
+      var pm = f2.moveEntity('z', 'down', { ms: 2000 });
+      f2.dispose();
+      await chk('move after dispose', pm, 500);
+      await chk('pending', pending, 500);
+      log('failed: ' + failed.length + ' ' + failed.join(', '));
+    } catch (e) {
+      console.error('test exception ' + (e && e.stack || e));
+    }
+    window.__failed = failed;
+    window.__done = true;
+  })();
+})();
+</script>
+</body>
+</html>

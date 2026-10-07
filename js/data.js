@@ -318,43 +318,150 @@
     }
   };
 
-  // 도감 순서
-  var DEX = ['naru', 'seol', 'ssaga', 'cheese', 'leaf', 'moth', 'zap', 'wing', 'flare', 'sand', 'rock', 'punch', 'iron', 'venom', 'ghost', 'psy', 'ribbon', 'dragon', 'metal', 'black'];
+  /* ── 진화형 ── 기본형의 타입·기술표·대사를 물려받고 능력치가 오른다. 그림은 assets/mon/<id>.webp */
+  var EVOS = [
+    // [기본형, 진화형 id, 이름, 진화 레벨, 설명, 등장 대사]
+    ['naru', 'naru2', '파도냥', 16, '물결 같은 갈기를 두른 나루냥의 진화형이다. 꼬리의 파도로 배도 밀어낸다고 한다.', '파도처럼 밀어붙일게!'],
+    ['seol', 'seol2', '빙설묘', 16, '얼음 왕관을 쓴 설냥이의 진화형이다. 지나간 자리에는 눈꽃이 핀다.', '눈보라의 여왕이 왔어.'],
+    ['ssaga', 'ssaga2', '깡패냥', 16, '골목을 평정한 싸가지냥의 진화형이다. 눈가의 흉터는 백 번의 싸움의 흔적이다.', '…또 너냐. 귀찮게.'],
+    ['cheese', 'cheese2', '치즈대장', 18, '동네 고양이들을 거느리는 치즈냥의 진화형이다. 배가 부르면 누구에게나 너그럽다.', '대장님 등장이다냥!'],
+    ['leaf', 'leaf2', '숲지기냥', 18, '등에 어린 나무가 자라는 잎새냥의 진화형이다. 숲을 지키는 수호자로 여겨진다.', '숲이 너를 지켜보고 있어.'],
+    ['moth', 'moth2', '나비여왕냥', 18, '빛나는 날개를 가진 나비냥의 진화형이다. 날갯짓 한 번에 꽃가루가 별처럼 흩날린다.', '여왕의 춤을 보여줄게.'],
+    ['zap', 'zap2', '뇌전묘', 22, '번개를 두르고 달리는 찌릿냥의 진화형이다. 폭풍우가 치는 밤에만 모습을 드러낸다.', '번개보다 빠르게!'],
+    ['wing', 'wing2', '창공냥', 22, '거대한 날개로 구름 위를 나는 날개냥의 진화형이다.', '하늘은 내 영역이다!'],
+    ['flare', 'flare2', '염화묘', 26, '타오르는 갈기를 가진 화르냥의 진화형이다. 포효하면 주위의 공기가 일렁인다.', '불꽃의 왕 앞에 엎드려라!'],
+    ['sand', 'sand2', '사막왕냥', 26, '바위 갑옷을 두른 모래냥의 진화형이다. 사막 밑에 거대한 굴을 판다.', '땅속의 왕이 납신다.'],
+    ['rock', 'rock2', '거암냥', 26, '산처럼 거대해진 바위냥의 진화형이다. 백 년 동안 움직이지 않은 적도 있다.', '…쿠우웅.'],
+    ['punch', 'punch2', '권왕냥', 30, '무술의 극의에 다다른 주먹냥의 진화형이다. 검은 띠를 매고 산에서 수련한다.', '진정한 무도를 보여주마!'],
+    ['iron', 'iron2', '강철묘', 30, '기사처럼 갑옷을 입은 철갑냥의 진화형이다. 약속을 어긴 적이 없다고 한다.', '강철의 맹세에 걸고.'],
+    ['venom', 'venom2', '맹독묘', 32, '독 안개를 두른 독냥이의 진화형이다. 꼬리 끝 독 한 방울로 바위도 녹인다.', '도망치기엔 이미 늦었어.'],
+    ['ghost', 'ghost2', '망령묘', 32, '푸른 등불을 든 유령냥의 진화형이다. 길 잃은 영혼을 저세상으로 안내한다.', '등불을 따라와…'],
+    ['psy', 'psy2', '예언묘', 34, '세 갈래 꼬리를 가진 텔레냥의 진화형이다. 내일의 일을 미리 꿈꾼다고 한다.', '이 승부의 결말을 알고 있어.'],
+    ['ribbon', 'ribbon2', '리본공주', 34, '왕관을 쓴 리본냥의 진화형이다. 미소 한 번에 싸움이 멈춘다고 한다.', '공주님께 예의를 갖추렴!'],
+    ['dragon', 'dragon2', '용왕냥', 38, '용의 피가 깨어난 용냥이의 진화형이다. 날갯짓 한 번으로 폭풍을 일으킨다.', '용왕의 이름으로!']
+  ];
+  EVOS.forEach(function (e) {
+    var b = MONSTERS[e[0]], base = {};
+    Object.keys(b.base).forEach(function (k) { base[k] = Math.round(b.base[k] * (k === 'hp' ? 1.2 : 1.24)); });
+    b.evolve = { to: e[1], lv: e[3] };
+    MONSTERS[e[1]] = {
+      name: e[2], types: b.types.slice(), cat: true, height: Math.min(1, b.height + 0.15), bg: b.bg, from: e[0],
+      base: base, catchRate: 45, xp: Math.round(b.xp * 1.6), learn: b.learn,
+      blurb: e[4], lines: { intro: [e[5]], special: b.lines.special, faint: b.lines.faint, win: b.lines.win }
+    };
+  });
+
+  // 도감 순서 (기본형 다음에 진화형)
+  var DEX = [];
+  ['naru', 'seol', 'ssaga', 'cheese', 'leaf', 'moth', 'zap', 'wing', 'flare', 'sand', 'rock', 'punch', 'iron', 'venom', 'ghost', 'psy', 'ribbon', 'dragon']
+    .forEach(function (id) { DEX.push(id, MONSTERS[id].evolve.to); });
+  DEX.push('metal', 'black');
   var STARTERS = ['naru', 'seol', 'ssaga'];
 
+  /* ── 도구 ──
+     kind: ball(mult 포획 보정) | heal(hp, 9999=전부) | cure(상태이상 회복) | revive(frac) | repel(steps) | candy(레벨+1) | key(이벤트용)
+     price: 상점 가격(0 = 팔지 않음). battle: 배틀 중 사용 가능 */
+  var ITEMS = {
+    ball: { name: '포캣볼', kind: 'ball', mult: 1, price: 200, battle: true, desc: '야생 포캣몬을 잡는 기본 볼.' },
+    silverball: { name: '실버볼', kind: 'ball', mult: 1.5, price: 600, battle: true, desc: '포캣볼보다 잘 잡히는 은빛 볼.' },
+    goldball: { name: '골드볼', kind: 'ball', mult: 2, price: 1200, battle: true, desc: '아주 잘 잡히는 황금빛 볼.' },
+    snack: { name: '생선 간식', kind: 'heal', hp: 20, price: 200, battle: true, desc: 'HP를 20 회복한다.' },
+    tuna: { name: '참치 통조림', kind: 'heal', hp: 60, price: 700, battle: true, desc: 'HP를 60 회복한다.' },
+    salmon: { name: '연어 스테이크', kind: 'heal', hp: 120, price: 1200, battle: true, desc: 'HP를 120 회복한다.' },
+    feast: { name: '고급 캔', kind: 'heal', hp: 9999, price: 2500, battle: true, desc: 'HP를 모두 회복한다.' },
+    catnip: { name: '캣닢', kind: 'cure', price: 400, battle: true, desc: '상태이상을 모두 고친다.' },
+    matatabi: { name: '마따따비', kind: 'revive', frac: 0.5, price: 2000, battle: true, desc: '기절한 포캣몬을 HP 절반으로 깨운다.' },
+    repel: { name: '향긋 스프레이', kind: 'repel', steps: 100, price: 400, desc: '100걸음 동안 선두보다 레벨이 낮은 야생 포캣몬이 나오지 않는다.' },
+    candy: { name: '성장 사탕', kind: 'candy', price: 0, desc: '포캣몬 한 마리의 레벨을 1 올린다.' },
+    crystal: { name: '화산 결정', kind: 'key', price: 0, desc: '화산 기슭에서 주운 붉게 빛나는 결정.' },
+    bell: { name: '방울 목걸이', kind: 'key', price: 0, desc: '아기 고양이가 잃어버린 작은 방울.' }
+  };
+  // 상점 품목 — 배지 수에 따라 늘어난다
+  var SHOP = [
+    { badges: 0, items: ['ball', 'snack', 'catnip', 'repel'] },
+    { badges: 1, items: ['silverball'] },
+    { badges: 2, items: ['tuna'] },
+    { badges: 3, items: ['matatabi', 'salmon'] },
+    { badges: 4, items: ['goldball', 'feast'] }
+  ];
+
+  /* ── 트레이너 ──
+     team: [종, 레벨]. 'STARTER'/'STARTER2'는 라이벌이 고른 스타터(와 진화형)로 바뀐다.
+     money: 상금 기본값(상금 = 기본값 × 마지막 몬스터 레벨). look: PMaps.LOOKS 키 */
+  var TRAINERS = {
+    gym_forest: { name: '초롱', cls: '풀숲 관장', look: 'leaderForest', money: 60, team: [['moth', 9], ['cheese', 9], ['leaf', 11]],
+      lines: { intro: '풀숲의 친구들은 만만하지 않아!', lose: '와, 대단하다! 새싹 배지를 줄게.', after: '다음은 반짝 해안이야. 바닷바람이 기분 좋을걸?' } },
+    gym_coast: { name: '파랑', cls: '해안 관장', look: 'leaderCoast', money: 70, team: [['wing', 15], ['naru2', 16], ['zap2', 17]],
+      lines: { intro: '파도와 번개, 둘 다 막을 수 있어?', lose: '시원하게 졌네! 물결 배지야.', after: '화산 기슭은 뜨거우니까 물 준비 잘 해!' } },
+    gym_volcano: { name: '불꽃', cls: '화산 관장', look: 'leaderVolcano', money: 80, team: [['rock2', 20], ['sand2', 21], ['flare2', 23]],
+      lines: { intro: '뜨거운 승부를 보여주마!', lose: '네 열정이 더 뜨거웠다. 용암 배지다.', after: '얼음 빙하의 서리는 냉정한 녀석이지.' } },
+    gym_glacier: { name: '서리', cls: '빙하 관장', look: 'leaderGlacier', money: 90, team: [['iron', 24], ['punch', 24], ['seol2', 26]],
+      lines: { intro: '얼음보다 단단한 의지를 보여줘.', lose: '…녹아버렸어. 서리 배지를 가져가.', after: '어둠 골목에서는 뒤를 조심해.' } },
+    gym_alley: { name: '그늘', cls: '골목 관장', look: 'leaderAlley', money: 100, team: [['venom', 30], ['ghost', 30], ['ssaga2', 32]],
+      lines: { intro: '골목에선 골목의 규칙을 따라야지.', lose: '쳇… 인정한다. 그늘 배지다.', after: '별빛 신전의 별님은… 모든 걸 알고 있는 것 같더라.' } },
+    gym_temple: { name: '별님', cls: '신전 관장', look: 'leaderTemple', money: 110, team: [['psy2', 35], ['ribbon2', 35], ['dragon', 37]],
+      lines: { intro: '별들이 너를 시험하겠대.', lose: '별들이 너를 인정했어. 별빛 배지야.', after: '정상의 수호자가 기다리고 있어. 붉은 달을… 조심해.' } },
+    gym_summit: { name: '수호자', cls: '정상의', look: null, money: 200, team: [['metal', 38], ['black', 40]], final: true,
+      lines: { intro: '여기까지 왔구나. 마지막 시험이다.', lose: '…강해졌구나. 이제 네가 지킬 차례다.', after: '' } },
+
+    rival_1: { name: '하루', cls: '라이벌', look: 'rival', money: 30, team: [['STARTER', 5]],
+      lines: { intro: '나도 방금 파트너를 받았어! 한 판 붙자!', lose: '칫… 다음엔 안 져!' } },
+    rival_2: { name: '하루', cls: '라이벌', look: 'rival', money: 30, team: [['cheese', 12], ['STARTER', 14]],
+      lines: { intro: '배지 하나로 우쭐하지 마! 내 실력도 늘었다고!', lose: '…너 진짜 세졌구나.' } },
+    rival_3: { name: '하루', cls: '라이벌', look: 'rival', money: 36, team: [['flare', 21], ['wing', 21], ['STARTER2', 23]],
+      lines: { intro: '정상에 붉은 달이 뜬다는 소문 들었어? 그 전에 너부터 이긴다!', lose: '분하다… 그래도 재밌었어.' } },
+    rival_4: { name: '하루', cls: '라이벌', look: 'rival', money: 40, team: [['dragon', 31], ['ghost2', 32], ['STARTER2', 34]],
+      lines: { intro: '마지막이야. 정상에 가기 전에 진짜 실력을 보여줘!', lose: '…가. 정상의 수호자를 부탁해.' } },
+
+    t_forest_1: { name: '민준', cls: '벌레잡이 소년', look: 'kid', money: 16, team: [['moth', 4], ['moth', 5]],
+      lines: { intro: '내 나비냥 좀 봐! 진짜 예쁘지?', lose: '으앙, 날개가 접혔어…' } },
+    t_forest_2: { name: '서연', cls: '꼬마 숙녀', look: 'girl', money: 20, team: [['cheese', 6]],
+      lines: { intro: '눈이 마주쳤으면 승부야!', lose: '우리 치즈냥이 졌어…' } },
+    t_coast_1: { name: '바다', cls: '수영 선수', look: 'swimmer', money: 20, team: [['naru', 10], ['wing', 10]],
+      lines: { intro: '바다는 내 홈그라운드야!', lose: '물 먹었다…' } },
+    t_coast_2: { name: '태풍', cls: '낚시꾼', look: 'hiker', money: 24, team: [['zap', 11]],
+      lines: { intro: '월척 대신 너를 낚겠다!', lose: '오늘은 허탕이군.' } },
+    t_volcano_1: { name: '등산', cls: '등산가', look: 'hiker', money: 32, team: [['rock', 15], ['sand', 16]],
+      lines: { intro: '산을 오르는 자, 나를 넘어라!', lose: '하산해야겠군…' } },
+    t_volcano_2: { name: '화염', cls: '불꽃 청년', look: 'punk', money: 30, team: [['flare', 16]],
+      lines: { intro: '불타오르는 승부다!', lose: '불씨가 꺼졌어…' } },
+    t_glacier_1: { name: '하얀', cls: '스키어', look: 'girl', money: 30, team: [['seol', 20], ['iron', 20]],
+      lines: { intro: '설원을 가르는 스피드를 보여줄게!', lose: '미끄러졌다…' } },
+    t_glacier_2: { name: '강철', cls: '도장 수련생', look: 'hiker', money: 32, team: [['punch', 21], ['punch', 21]],
+      lines: { intro: '오스! 수련의 성과를 보여주마!', lose: '오스… 더 수련하겠습니다.' } },
+    t_alley_1: { name: '쿵', cls: '골목 펑크', look: 'punk', money: 36, team: [['venom', 25], ['ssaga', 25]],
+      lines: { intro: '여긴 우리 구역이야. 통행료 내!', lose: '…지나가.' } },
+    t_alley_2: { name: '미미', cls: '오컬트 소녀', look: 'mystic', money: 40, team: [['ghost', 26]],
+      lines: { intro: '네 등 뒤에… 뭔가 있어.', lose: '영혼들이 너를 좋아하나 봐.' } },
+    t_temple_1: { name: '현우', cls: '수도승', look: 'elder', money: 44, team: [['psy', 30], ['ribbon', 30]],
+      lines: { intro: '마음의 수련, 그대도 받아보시게.', lose: '깨달음을 얻었구려.' } },
+    t_temple_2: { name: '아리', cls: '용 조련사', look: 'mystic', money: 48, team: [['dragon', 31]],
+      lines: { intro: '용의 후예와 겨뤄 볼 텐가?', lose: '용이… 고개를 숙였어.' } },
+    t_summit_1: { name: '견우', cls: '수호자의 제자', look: 'hiker', money: 60, team: [['iron2', 36], ['punch2', 36]],
+      lines: { intro: '스승님께 가려면 나를 넘어야 한다!', lose: '…스승님을 부탁한다.' } }
+  };
+  // 라이벌은 플레이어 스타터에 따라 다른 스타터를 고른다
+  var RIVAL_PICK = { naru: 'ssaga', seol: 'naru', ssaga: 'seol' };
+
   /* ── 지역 ──
-     wild: [종, 출현 가중치]. lv: 야생 레벨 범위. gym: 관장 팀(순서대로 나온다).
-     지역은 앞 지역 배지를 얻으면 열린다. final: 챔피언전(메탈가디언몬 → 흑화 → 블랙). post: 클리어 후 열림. */
+     wild: [종, 출현 가중치]. lv: 야생 레벨 범위. gym: 관장 트레이너 id와 배지.
+     지역은 앞 지역 배지를 얻으면 열린다. final: 정상(메탈가디언몬 → 흑화 → 블랙). post: 클리어 후 열림. */
   var AREAS = [
     { id: 'forest', name: '햇살 풀숲', bg: 'forest', lv: [3, 6],
-      wild: [['cheese', 4], ['leaf', 3], ['moth', 3]],
-      gym: { name: '풀숲 관장 초롱', badge: '새싹 배지', team: [['moth', 9], ['cheese', 9], ['leaf', 11]],
-        lines: { intro: '풀숲의 친구들은 만만하지 않아!', lose: '와, 대단하다! 새싹 배지를 줄게.' } } },
+      wild: [['cheese', 4], ['leaf', 3], ['moth', 3]], gym: { trainer: 'gym_forest', badge: '새싹 배지' } },
     { id: 'coast', name: '반짝 해안', bg: 'sea', lv: [8, 12],
-      wild: [['zap', 4], ['wing', 4], ['naru', 1]],
-      gym: { name: '해안 관장 파랑', badge: '물결 배지', team: [['wing', 14], ['naru', 14], ['zap', 16]],
-        lines: { intro: '파도와 번개, 둘 다 막을 수 있어?', lose: '시원하게 졌네! 물결 배지야.' } } },
+      wild: [['zap', 4], ['wing', 4], ['naru', 1]], gym: { trainer: 'gym_coast', badge: '물결 배지' } },
     { id: 'volcano', name: '화산 기슭', bg: 'volcano', lv: [13, 17],
-      wild: [['flare', 4], ['sand', 4], ['rock', 3]],
-      gym: { name: '화산 관장 불꽃', badge: '용암 배지', team: [['rock', 19], ['sand', 19], ['flare', 21]],
-        lines: { intro: '뜨거운 승부를 보여주마!', lose: '네 열정이 더 뜨거웠다. 용암 배지다.' } } },
+      wild: [['flare', 4], ['sand', 4], ['rock', 3]], gym: { trainer: 'gym_volcano', badge: '용암 배지' } },
     { id: 'glacier', name: '얼음 빙하', bg: 'ice', lv: [18, 22],
-      wild: [['punch', 4], ['iron', 4], ['seol', 1]],
-      gym: { name: '빙하 관장 서리', badge: '서리 배지', team: [['iron', 24], ['punch', 24], ['seol', 26]],
-        lines: { intro: '얼음보다 단단한 의지를 보여줘.', lose: '…녹아버렸어. 서리 배지를 가져가.' } } },
+      wild: [['punch', 4], ['iron', 4], ['seol', 1], ['cheese2', 1], ['moth2', 1]], gym: { trainer: 'gym_glacier', badge: '서리 배지' } },
     { id: 'alley', name: '어둠 골목', bg: 'alley', lv: [23, 27],
-      wild: [['venom', 4], ['ghost', 4], ['ssaga', 1]],
-      gym: { name: '골목 관장 그늘', badge: '그늘 배지', team: [['venom', 29], ['ghost', 29], ['ssaga', 31]],
-        lines: { intro: '골목에선 골목의 규칙을 따라야지.', lose: '쳇… 인정한다. 그늘 배지다.' } } },
+      wild: [['venom', 4], ['ghost', 4], ['ssaga', 1], ['zap2', 1], ['wing2', 1]], gym: { trainer: 'gym_alley', badge: '그늘 배지' } },
     { id: 'temple', name: '별빛 신전', bg: 'temple', lv: [28, 32],
-      wild: [['psy', 4], ['ribbon', 4], ['dragon', 1]],
-      gym: { name: '신전 관장 별님', badge: '별빛 배지', team: [['psy', 34], ['ribbon', 34], ['dragon', 36]],
-        lines: { intro: '별들이 너를 시험하겠대.', lose: '별들이 너를 인정했어. 별빛 배지야.' } } },
-    { id: 'summit', name: '수호자의 정상', bg: 'metal', final: true,
-      gym: { name: '정상의 수호자', badge: '수호자의 증표', team: [['metal', 38], ['black', 40]],
-        lines: { intro: '여기까지 왔구나. 마지막 시험이다.', lose: '…강해졌구나. 이제 네가 지킬 차례다.' } } },
+      wild: [['psy', 4], ['ribbon', 4], ['dragon', 1], ['flare2', 1], ['sand2', 1], ['rock2', 1]], gym: { trainer: 'gym_temple', badge: '별빛 배지' } },
+    { id: 'summit', name: '수호자의 정상', bg: 'metal', final: true, gym: { trainer: 'gym_summit', badge: '수호자의 증표' } },
     { id: 'ruins', name: '붉은 달 폐허', bg: 'dark', lv: [40, 45], post: true,
-      wild: [['metal', 1], ['black', 1]] }
+      wild: [['metal', 2], ['black', 2], ['punch2', 1], ['iron2', 1], ['venom2', 1], ['ghost2', 1], ['psy2', 1], ['ribbon2', 1], ['dragon2', 1], ['leaf2', 1]] }
   ];
 
   // 컷신 대본 (who: 'metal' | 'black' | 'fx')
@@ -379,16 +486,22 @@
     expMult: 3.0,          // 경험치 배율 (원작보다 빠르게 — 모바일 짧은 플레이)
     expShare: 0.5,         // 싸우지 않은 파티 몬스터가 받는 경험치 비율
     trainerExp: 1.5,
-    ballBonus: 1.5,        // 포캣볼 보정
+    ballBonus: 1,          // 모든 볼에 곱하는 보정 (볼 종류 보정은 ITEMS.mult)
     shinyRate: 1 / 20,
     partyMax: 3,
     startLevel: 5,
-    maxLevel: 60
+    maxLevel: 60,
+    encounterRate: 0.09,   // 수풀 한 걸음당 야생 조우 확률
+    encounterGrace: 3,     // 수풀에 들어선 뒤 조우가 없는 걸음 수
+    startMoney: 1000,
+    startItems: { ball: 5, snack: 3 },
+    moneyMax: 999999
   };
 
   var api = {
     TYPES: TYPES, CHART: CHART, STATUS: STATUS, STAT_NAMES: STAT_NAMES, MOVES: MOVES, MONSTERS: MONSTERS,
-    DEX: DEX, STARTERS: STARTERS, AREAS: AREAS, CUTSCENES: CUTSCENES, TUNING: TUNING
+    DEX: DEX, STARTERS: STARTERS, ITEMS: ITEMS, SHOP: SHOP, TRAINERS: TRAINERS, RIVAL_PICK: RIVAL_PICK,
+    AREAS: AREAS, CUTSCENES: CUTSCENES, TUNING: TUNING
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PData = api;

@@ -5,17 +5,17 @@ const fs = require('fs');
 const { start } = require('./serve');
 const { launch } = require('./browser');
 
-const EXPECTED = 38;
+const EXPECTED = 74;
 
 (async () => {
   const server = await start(0);
   const url = 'http://127.0.0.1:' + server.address().port + '/tools/gallery.html';
   const browser = await launch();
-  const page = await browser.newPage({ viewport: { width: 1352, height: 690 } });
+  const page = await browser.newPage({ viewport: { width: 1624, height: 1120 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(url);
-  // 기본 20장 + 이로치 18장(고양이 18종) = 38장
+  // 기본 38장(고양이 18종 + 진화형 18종 + 메탈가디언몬·블랙) + 이로치 36장 = 74장
   await page.waitForFunction((n) => window.loaded + window.failed.length >= n, EXPECTED, { timeout: 20000 });
   const res = await page.evaluate(() => ({
     loaded: window.loaded, failed: window.failed, expected: window.expected,

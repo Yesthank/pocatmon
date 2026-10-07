@@ -35,9 +35,20 @@ test('데이터: 18타입 상성표와 몬스터·기술 참조가 모두 유효
   }
   // 모든 타입에 고양이가 한 마리 이상 있다
   for (const t of T) assert.ok(catTypes.has(t), '고양이 없는 타입: ' + t);
+  // 트레이너 팀·도구·상점·진화 참조
+  for (const [tid, t] of Object.entries(D.TRAINERS)) {
+    t.team.forEach(([id, lv]) => { assert.ok(D.MONSTERS[E.resolveSpecies(id, { starter: 'seol' })], tid + ':' + id); assert.ok(lv >= 1 && lv <= 60, tid); });
+    assert.ok(t.lines && t.lines.intro && t.lines.lose, tid);
+  }
+  D.SHOP.forEach((tier) => tier.items.forEach((id) => assert.ok(D.ITEMS[id] && D.ITEMS[id].price > 0, id)));
+  for (const [id, m] of Object.entries(D.MONSTERS)) if (m.evolve) { assert.ok(D.MONSTERS[m.evolve.to], id); assert.equal(D.MONSTERS[m.evolve.to].from, id); }
+  assert.equal(D.DEX.length, Object.keys(D.MONSTERS).length);
   for (const a of D.AREAS) {
     (a.wild || []).forEach(([id]) => assert.ok(D.MONSTERS[id], a.id));
-    if (a.gym) a.gym.team.forEach(([id]) => assert.ok(D.MONSTERS[id], a.id));
+    if (a.gym) {
+      assert.ok(D.TRAINERS[a.gym.trainer], a.id);
+      D.TRAINERS[a.gym.trainer].team.forEach(([id]) => assert.ok(D.MONSTERS[E.resolveSpecies(id, { starter: 'naru' })], a.id));
+    }
   }
 });
 
@@ -333,7 +344,7 @@ test('내 몬스터가 쓰러지면 교체 요청 → forceSwitch는 턴을 쓰�
 test('트레이너: 다음 몬스터를 내보내고, 경험치는 쓰러뜨릴 때 받는다 (트레이너 ×1.5)', () => {
   const a = teach(mon('punch', 40), ['closecombat']);
   const team = [teach(mon('cheese', 5), ['tackle']), teach(mon('cheese', 5), ['tackle'])];
-  const b = E.makeBattle('trainer', [a], team, { trainer: D.AREAS[0].gym, areaId: 'forest' });
+  const b = E.makeBattle('trainer', [a], team, { trainer: E.trainerInfo('gym_forest'), areaId: 'forest' });
   const exp0 = a.exp;
   const ev = E.resolveTurn(b, { t: 'move', slot: 0 }, { t: 'move', slot: 0 }, constant(0.9));
   const order = types(ev);
@@ -360,7 +371,10 @@ test('최종전: 메탈가디언몬이 쓰러지면 흑화 컷신 뒤 블랙이 
 /* ── 포획·도망 ── */
 test('포획: a ≥ 255면 확정, 체력이 낮고 상태이상이면 더 잘 잡힌다', () => {
   const easy = mon('cheese', 5); easy.hp = 1; easy.status = 'par';
-  assert.ok(E.catchRoll(easy, constant(0.99)).caught);
+  assert.ok(E.catchRoll(easy, constant(0.99), 1.5).caught);
+  // 볼이 좋을수록 a가 크다
+  const mid = mon('cheese', 20); mid.hp = Math.floor(E.maxHp(mid) / 2);
+  assert.ok(E.catchRoll(mid, constant(0.5), 2).a > E.catchRoll(mid, constant(0.5), 1).a);
   const hard = mon('black', 45);
   const full = E.catchRoll(hard, constant(0.5));
   assert.ok(!full.caught);
@@ -515,7 +529,7 @@ test('경험치는 쓰러뜨린 순간에 준다 — 그 뒤 독으로 쓰러져
   const a = teach(mon('punch', 30), ['closecombat']), c = mon('rock', 30);
   a.status = 'psn'; a.hp = 1;
   const team = [teach(mon('cheese', 10), ['tackle']), teach(mon('cheese', 10), ['tackle'])];
-  const b = E.makeBattle('trainer', [a, c], team, { trainer: D.AREAS[0].gym, areaId: 'forest' });
+  const b = E.makeBattle('trainer', [a, c], team, { trainer: E.trainerInfo('gym_forest'), areaId: 'forest' });
   const e0 = a.exp;
   const ev = E.resolveTurn(b, { t: 'move', slot: 0 }, { t: 'move', slot: 0 }, constant(0.9));
   assert.ok(ev.some((x) => x.t === 'residual' && x.side === 'player'));
@@ -538,7 +552,7 @@ test('난수 시드 고정 시 같은 결과 (긴 배틀 무작위 검사: 예�
     const pick = () => ids[Math.floor(rng() * ids.length)];
     const p = [mon(pick(), 25), mon(pick(), 25), mon(pick(), 25)];
     const e = [mon(pick(), 25), mon(pick(), 25)];
-    const b = E.makeBattle(rng() < 0.5 ? 'wild' : 'trainer', p, rng() < 0.5 ? e.slice(0, 1) : e, { trainer: D.AREAS[1].gym });
+    const b = E.makeBattle(rng() < 0.5 ? 'wild' : 'trainer', p, rng() < 0.5 ? e.slice(0, 1) : e, { trainer: E.trainerInfo('gym_coast') });
     for (let t = 0; t < 200 && !b.over; t++) {
       if (b.needSwitch) { E.forceSwitch(b, E.firstAlive(b.p.party)); continue; }
       const me = E.active(b, 'p');
@@ -550,4 +564,155 @@ test('난수 시드 고정 시 같은 결과 (긴 배틀 무작위 검사: 예�
     }
     assert.ok(b.over, 'battle did not finish');
   }
+});
+
+/* ── v3: 도구·상점·진화·트레이너·저장 이전 ── */
+test('가방: 배틀 중 회복 도구는 턴을 쓰고 개수가 준다. 대상이 맞지 않으면 턴을 쓰지 않는다', () => {
+  const save = E.newGame('naru', constant(0.5));
+  const me = save.party[0]; me.hp = 3;
+  const b = E.createWildBattle(save, 'forest', constant(0.5));
+  const n0 = save.bag.snack;
+  const ev = E.resolveTurn(b, { t: 'item', item: 'snack', target: 0 }, { t: 'move', slot: 0 }, constant(0.9));
+  assert.equal(save.bag.snack, n0 - 1);
+  assert.ok(ev.some((x) => x.t === 'heal' && x.side === 'player'));
+  assert.equal(b.turn, 1);
+  const rej = E.resolveTurn(b, { t: 'item', item: 'matatabi', target: 0 }, null, constant(0.9));
+  assert.equal(b.turn, 1);
+  assert.ok(/없다/.test(rej[0].text));
+});
+
+test('볼: 가방에서 줄고, 볼이 없으면 던질 수 없다', () => {
+  const save = E.newGame('seol', constant(0.5));
+  save.bag = { ball: 1 };
+  const b = E.createWildBattle(save, 'forest', constant(0.5));
+  E.resolveTurn(b, { t: 'ball', item: 'ball' }, { t: 'move', slot: 0 }, constant(0.999));
+  assert.equal(save.bag.ball, undefined);
+  if (!b.over) assert.ok(/없다/.test(E.resolveTurn(b, { t: 'ball', item: 'ball' }, null, constant(0.5))[0].text));
+});
+
+test('배틀 밖 도구: 회복·기절 회복·성장 사탕·스프레이', () => {
+  const save = E.newGame('ssaga', constant(0.5));
+  const m = save.party[0];
+  save.bag = { tuna: 1, matatabi: 1, candy: 1, repel: 1 };
+  m.hp = 0;
+  assert.ok(!E.useItem(save, 'tuna', 0).ok);
+  assert.ok(E.useItem(save, 'matatabi', 0).ok);
+  assert.equal(m.hp, Math.floor(E.maxHp(m) / 2));
+  const lv = m.lv;
+  assert.ok(E.useItem(save, 'candy', 0).ok);
+  assert.equal(m.lv, lv + 1);
+  assert.ok(E.useItem(save, 'repel').ok);
+  assert.equal(save.repel, 100);
+  assert.deepEqual(save.bag, { tuna: 1 }); // 기절한 몬스터에게 쓰려던 참치는 남는다
+});
+
+test('상점: 배지 수에 따라 품목이 늘고, 돈이 모자라면 못 산다', () => {
+  const save = E.newGame('naru', constant(0.5));
+  assert.ok(E.shopItems(save).includes('ball'));
+  assert.ok(!E.shopItems(save).includes('silverball'));
+  assert.ok(!E.buy(save, 'silverball').ok);
+  save.badges = ['forest'];
+  assert.ok(E.shopItems(save).includes('silverball'));
+  save.money = 1000;
+  assert.ok(E.buy(save, 'silverball', 1).ok);
+  assert.equal(save.money, 400);
+  assert.ok(!E.buy(save, 'silverball', 1).ok);
+  assert.ok(!E.buy(save, 'candy').ok); // 팔지 않는 도구
+});
+
+test('트레이너전: 상금 = 기본값 × 마지막 몬스터 레벨, 이긴 트레이너는 기록된다', () => {
+  const save = E.newGame('naru', constant(0.5));
+  save.party = [teach(mon('punch', 60), ['closecombat'])];
+  const b = E.createTrainerBattle(save, 't_forest_2', constant(0.5));
+  const m0 = save.money;
+  const ev = E.resolveTurn(b, { t: 'move', slot: 0 }, null, constant(0.9));
+  assert.equal(b.result, 'win');
+  const money = ev.find((x) => x.t === 'money');
+  assert.equal(money.amount, D.TRAINERS.t_forest_2.money * 6);
+  const out = E.finishBattle(save, b);
+  assert.equal(save.money, m0 + money.amount);
+  assert.ok(save.beaten.t_forest_2);
+  assert.equal(out.badge, null); // 길목 트레이너는 배지를 주지 않는다
+});
+
+test('라이벌: 플레이어 스타터에 따라 다른 스타터·진화형을 낸다', () => {
+  for (const st of D.STARTERS) {
+    const save = E.newGame(st, constant(0.5));
+    const r1 = E.createTrainerBattle(save, 'rival_1', constant(0.5));
+    assert.equal(r1.e.party[0].id, D.RIVAL_PICK[st]);
+    assert.notEqual(r1.e.party[0].id, st);
+    const r3 = E.createTrainerBattle(save, 'rival_3', constant(0.5));
+    assert.equal(r3.e.party[2].id, D.MONSTERS[D.RIVAL_PICK[st]].evolve.to);
+  }
+});
+
+test('진화: 진화 레벨에 이르면 배틀 뒤 진화 대상이 되고, 진화하면 종·HP·도감이 바뀐다', () => {
+  const save = E.newGame('naru', constant(0.5));
+  const m = save.party[0];
+  const ev = [];
+  E.gainExp(m, E.expForLevel(16) - m.exp, ev);
+  assert.equal(m.lv, 16);
+  assert.deepEqual(E.pendingEvolutions(save), [0]);
+  const before = E.maxHp(m), hp = m.hp;
+  const r = E.evolveMon(save, m);
+  assert.deepEqual(r, { from: 'naru', to: 'naru2' });
+  assert.equal(m.hp, hp + E.maxHp(m) - before);
+  assert.ok(save.dex.caught.naru2);
+  assert.deepEqual(E.pendingEvolutions(save), []);
+  // 기절한 몬스터는 진화하지 않는다
+  const c = mon('cheese', 20); c.hp = 0;
+  assert.ok(!E.canEvolve(c));
+});
+
+test('저장 v3: 새 게임 기본값, v2 저장은 v3로 옮겨진다', () => {
+  const save = E.newGame('naru', constant(0.5));
+  assert.equal(save.v, 3);
+  assert.equal(save.money, D.TUNING.startMoney);
+  assert.ok(E.isValidSave(save));
+  const v2 = JSON.parse(JSON.stringify(save));
+  v2.v = 2; ['money', 'bag', 'flags', 'beaten', 'visited', 'repel', 'pos', 'respawn'].forEach((k) => delete v2[k]);
+  v2.badges = ['forest', 'coast'];
+  const mem = { 'pocatmon.save': JSON.stringify(v2) };
+  const st = E.createStore({ getItem: (k) => mem[k] || null, setItem: (k, v) => { mem[k] = v; }, removeItem: (k) => { delete mem[k]; } });
+  const got = st.load();
+  assert.ok(got && got.v === 3);
+  assert.ok(got.flags.got_starter && got.flags.intro);
+  assert.ok(got.beaten.rival_1);
+  assert.ok(got.beaten.gym_forest && got.beaten.gym_coast);
+  assert.equal(got.money, D.TUNING.startMoney + 1200);
+  assert.deepEqual(got.party, v2.party);
+  const bad = JSON.parse(JSON.stringify(save)); bad.bag.nope = 1;
+  assert.ok(!E.isValidSave(bad));
+});
+
+test('리뷰 회귀: 깨어 있는 마지막 몬스터는 맡길 수 없고, 반동 동시 쓰러짐 승리 뒤에는 센터로 회복된다', () => {
+  const save = E.newGame('naru', constant(0.5));
+  E.addCaught(save, mon('cheese', 5));
+  save.party[1].hp = 0;
+  assert.ok(!E.moveToBox(save, 0));
+  E.addCaught(save, mon('leaf', 5)); // 파티 3마리째
+  E.addCaught(save, mon('moth', 5)); save.box[0].hp = 0; // 보관함의 기절 몬스터
+  save.party[2].hp = 0;
+  assert.ok(!E.swapPartyBox(save, 0, 0));
+  // 반동 동시 쓰러짐
+  const s2 = E.newGame('seol', constant(0.5));
+  s2.party = [teach(mon('wing', 50), ['bravebird'])]; s2.party[0].hp = 1;
+  const b = E.makeBattle('wild', s2.party, [teach(mon('cheese', 5), ['tackle'])]);
+  E.resolveTurn(b, { t: 'move', slot: 0 }, { t: 'move', slot: 0 }, constant(0.9));
+  assert.equal(b.result, 'win');
+  const out = E.finishBattle(s2, b);
+  assert.ok(out.whiteout);
+  assert.ok(E.canExplore(s2));
+});
+
+test('리뷰 회귀: 조사 한 글자 조사, 관장 재대결 상금은 절반', () => {
+  assert.equal(E.josa('설냥이', '의'), '설냥이의');
+  const save = E.newGame('naru', constant(0.5));
+  save.party = [teach(mon('punch', 60), ['closecombat'])];
+  save.badges = ['forest'];
+  const b = E.createGymBattle(save, 'forest', constant(0.5));
+  b.e.party.forEach((m) => { m.hp = 1; });
+  for (let i = 0; i < 5 && !b.over; i++) E.resolveTurn(b, { t: 'move', slot: 0 }, null, constant(0.9));
+  assert.equal(b.result, 'win');
+  assert.equal(b.prize, Math.floor(D.TRAINERS.gym_forest.money * 11 * 0.5));
 });

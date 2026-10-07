@@ -19,7 +19,7 @@ npm test               # 엔진 테스트, 수 초
 npm run sim            # 스타터 3종 × 80회 전체 진행 밸런스, 결과 문서 갱신(--no-write 로 생략, SIM_RUNS=N 으로 횟수 조정)
 npm run smoke          # 헤드리스 3D + 2D 흐름, tools/out/*.png 스크린샷, 1~3분
 ```
-보조 도구로는 `node tools/gallery-shot.js`와 `node tools/stage-shot.js`가 있다. `node tools/gallery-shot.js`는 캐릭터 그림 38장(일반 20장, 고양이 이로치 18장)을 로드해 확인하고, `node tools/stage-shot.js`는 경기장 3D/2D 연출을 확인한다.
+보조 도구로는 `node tools/gallery-shot.js`와 `node tools/stage-shot.js`가 있다. `node tools/gallery-shot.js`는 캐릭터 그림 74장(일반 38장, 이로치 36장)을 로드해 확인하고, `node tools/field-shot.js`는 필드 렌더러(테마 9종·실제 맵 9개·사람 모양)를 확인하고, `node tools/stage-shot.js`는 경기장 3D/2D 연출을 확인한다.
 
 ## 배포
 - 공개 저장소 `Yesthank/pocatmon`의 `main` 브랜치 루트를 GitHub Pages가 서빙한다(`https://yesthank.github.io/pocatmon/`).

@@ -10,6 +10,8 @@
   shift               색상 이동(도)
   set_h               색상을 이 값으로 고정(저채도 회색 털에 색을 입힐 때)
   s_mul, s_add, v_mul 채도·명도 조정
+  v_pow               명도 감마(1 미만이면 어두운 털을 밝힌다 — 검은 털을 밝은 색으로 바꿀 때. 흰 부분은 1에 머문다)
+  vfade               vmax 경계를 이 폭만큼 선형으로 줄인다(밝은 흰 털과 바뀐 털 사이 띠 방지)
 가장자리가 갑자기 끊기지 않도록 색상 범위 경계 10° 안에서는 효과를 선형으로 줄인다.
 """
 import os
@@ -58,6 +60,40 @@ RULES = {
              dict(hue=(180, 250), smin=0.3, shift=150)],
     # 페어리: 분홍 → 라벤더 하늘색
     'ribbon': [dict(hue=(290, 30), smin=0.08, shift=-110)],
+
+    # ── 진화형(<id>2): 기본형 이로치와 같은 색 계열로 맞춘다 ──
+    # 물: 하늘색 → 보라(나루냥 이로치와 같은 +62°)
+    'naru2': [dict(hue=(170, 255), smin=0.08, shift=62)],
+    # 얼음: 흰 털·연하늘 털 그림자(채도 0.38 미만) → 회색, 하늘색 결정·눈·냉기 → 보라
+    'seol2': [dict(hue=(0, 360), smax=0.38, set_h=230, s_mul=0.15, v_mul=0.66),
+              dict(hue=(165, 260), smin=0.38, shift=68, s_mul=1.1)],
+    # 악: 검은 털·회색 줄무늬 → 황갈색, 명도 0.09 미만 선은 그대로
+    'ssaga2': [dict(hue=(0, 360), smax=0.3, vmin=0.09, vmax=0.8, vfade=0.25, set_h=32, s_add=0.4, v_pow=0.3)],
+    'cheese2': [dict(hue=(10, 50), smin=0.35, set_h=215, s_mul=0.3, v_mul=0.9)],
+    'flare2': [dict(hue=(340, 60), smin=0.2, shift=190)],
+    'leaf2': [dict(hue=(58, 170), smin=0.15, set_h=22, s_mul=1.6, v_mul=1.05)],
+    'zap2': [dict(hue=(40, 70), smin=0.25, shift=-22, s_mul=1.05)],
+    # 격투 진화형: 털·붉은 붕대는 격투냥 이로치와 같게(회청색 털, 남색 붕대). 남색 도복 → 자주색.
+    # 금색 띠·장식은 털과 색상(28~40°)이 겹쳐 따로 고를 수 없으므로 털과 함께 은회색이 된다
+    'punch2': [dict(hue=(5, 55), smin=0.1, set_h=215, s_mul=0.3, v_mul=0.85),
+               dict(hue=(340, 5), smin=0.35, shift=230),
+               dict(hue=(205, 255), smin=0.2, shift=115, s_mul=1.05, v_mul=1.1)],
+    'venom2': [dict(hue=(250, 320), smin=0.12, shift=-95),
+               dict(hue=(55, 110), smin=0.3, shift=-45)],
+    'sand2': [dict(hue=(15, 55), smin=0.1, shift=-22, s_mul=1.35)],
+    'wing2': [dict(hue=(175, 250), smin=0.08, shift=165)],
+    'psy2': [dict(hue=(250, 350), smin=0.08, shift=-130)],
+    # 벌레: 날개 색 회전 + 크림색 몸(채도 0.3 미만)도 연보라로 물들여 기본형 이로치보다 확실히 구별한다. 금장식은 그대로
+    'moth2': [dict(hue=(75, 15), smin=0.25, shift=120),
+              dict(hue=(15, 75), smin=0.04, smax=0.3, set_h=280, s_add=0.12)],
+    'rock2': [dict(hue=(0, 360), smax=0.18, set_h=18, s_add=0.22),
+              dict(hue=(20, 55), smin=0.35, shift=165)],
+    'ghost2': [dict(hue=(215, 290), smin=0.12, shift=60),
+               dict(hue=(165, 214), smin=0.2, shift=135)],
+    'dragon2': [dict(hue=(160, 250), smin=0.15, shift=165)],
+    'iron2': [dict(hue=(0, 360), smax=0.2, vmin=0.2, set_h=42, s_add=0.35),
+              dict(hue=(180, 250), smin=0.3, shift=150)],
+    'ribbon2': [dict(hue=(290, 30), smin=0.08, shift=-110)],
 }
 
 FEATHER = 10.0
@@ -116,14 +152,18 @@ def recolor(rgba, rules):
         lo, hi = r.get('hue', (0, 360))
         w = hue_weight(h0, lo, hi)
         w = w * (s0 >= r.get('smin', 0)) * (s0 <= r.get('smax', 1.01))
-        w = w * (v0 >= r.get('vmin', 0.12)) * (v0 <= r.get('vmax', 1.01))
+        w = w * (v0 >= r.get('vmin', 0.12))
+        if 'vfade' in r:
+            w = w * np.clip((r['vmax'] - v0) / r['vfade'], 0, 1)
+        else:
+            w = w * (v0 <= r.get('vmax', 1.01))
         if not w.any():
             continue
         nh = h0 + r.get('shift', 0)
         if 'set_h' in r:
             nh = np.full_like(h0, r['set_h'])
         ns = np.clip(s0 * r.get('s_mul', 1.0) + r.get('s_add', 0.0), 0, 1)
-        nv = np.clip(v0 * r.get('v_mul', 1.0), 0, 1)
+        nv = np.clip(np.power(v0, r.get('v_pow', 1.0)) * r.get('v_mul', 1.0), 0, 1)
         # 색상은 가까운 쪽 각도 차이로, 채도·명도는 값 그대로 가중치만큼 보간한다
         dh = ((nh - h0 + 180) % 360) - 180
         sel = w > 0

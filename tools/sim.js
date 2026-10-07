@@ -9,6 +9,7 @@ const path = require('path');
 const D = require('../js/data.js');
 const E = require('../js/engine.js');
 const T = D.TUNING;
+const PM = require('../js/maps.js');
 
 const N = Number(process.env.SIM_RUNS) || 80;
 const SEED = 20261006;
@@ -41,7 +42,7 @@ function pickReplacement(b) {
 }
 function playerAction(b, rng, wantCatch) {
   const me = E.active(b, 'p'), foe = E.active(b, 'e');
-  if (wantCatch && b.kind === 'wild' && foe.hp / E.maxHp(foe) < 0.5) return { t: 'ball' };
+  if (wantCatch && b.kind === 'wild' && foe.hp / E.maxHp(foe) < 0.5) return { t: 'ball', item: 'silverball' };
   const ratio = me.hp / E.maxHp(me);
   // 상성이 나쁘면(최선 점수가 낮고 더 나은 동료가 건강하면) 교체 — 한 상대에게 한 번만
   if (b._switchedFor !== foe.uid + ':' + b.e.active) {
@@ -106,10 +107,13 @@ function counterPick(save, team) {
 
 function playthrough(starter, rng) {
   const save = E.newGame(starter, rng);
+  save.bag = null; // 시뮬레이션은 가방 개수를 세지 않는다(실버볼 무제한)
+  const evolveAll = () => E.pendingEvolutions(save).forEach((i) => E.evolveMon(save, save.party[i]));
   const stat = { gyms: [], wild: 0, turns: 0, cleared: false, timeouts: 0, caught: 0 };
   for (const area of D.AREAS) {
     if (area.post) continue;
-    const ace = Math.max.apply(null, area.gym.team.map((t) => t[1]));
+    const gymTeam = D.TRAINERS[area.gym.trainer].team;
+    const ace = Math.max.apply(null, gymTeam.map((t) => t[1]));
     const target = ace - GRIND_GAP;
     const g = { id: area.id, attempts: 0, firstWin: false, won: false, lvAtFirst: 0, wildHere: 0 };
     const grind = (limit) => {
@@ -123,6 +127,7 @@ function playthrough(starter, rng) {
         stat.turns += fight(b, rng, wantCatch);
         if (b.timeout) stat.timeouts++;
         const out = E.finishBattle(save, b);
+        evolveAll();
         if (out.caughtTo) { stat.caught++; arrangeParty(save); }
         stat.wild++; g.wildHere++;
       }
@@ -135,10 +140,19 @@ function playthrough(starter, rng) {
       grind(limit);
       if (!saved) { delete area.wild; delete area.lv; }
     };
+    // 길목 트레이너·라이벌과 먼저 한 번씩 싸운다 (지면 센터에서 회복하고 넘어간다)
+    if (PM.MAPS[area.id]) PM.MAPS[area.id].npcs.filter((n) => n.trainer).forEach((n) => {
+      E.healParty(save);
+      const tb = E.createTrainerBattle(save, n.trainer, rng);
+      stat.turns += fight(tb, rng, false);
+      E.finishBattle(save, tb);
+      evolveAll();
+      stat.trainers = (stat.trainers || 0) + 1;
+    });
     grindIn(GRIND_CAP);
     while (g.attempts < MAX_ATTEMPTS && !g.won) {
       if (g.attempts > 0) {
-        if (g.attempts === 1) counterPick(save, area.gym.team);
+        if (g.attempts === 1) counterPick(save, gymTeam);
         grindIn(RETRY_GRIND);
       }
       E.healParty(save);
@@ -147,6 +161,7 @@ function playthrough(starter, rng) {
       stat.turns += fight(b, rng, false);
       if (b.timeout) stat.timeouts++;
       E.finishBattle(save, b);
+      evolveAll();
       g.attempts++;
       if (b.result === 'win') { g.won = true; if (g.attempts === 1) g.firstWin = true; }
     }
@@ -234,7 +249,7 @@ if (WRITE_DOC) {
   L.push('|---|---:|' + D.STARTERS.map(() => '---:').join('|') + '|---:|---|');
   gymTable.forEach((g) => {
     const a = D.AREAS.find((x) => x.id === g.id);
-    L.push(`| ${a.gym.name} (${a.name}) | ${pct(g.first)} | ` + D.STARTERS.map((s) => `${pct(g.perStarter[s].first)} (Lv${g.perStarter[s].lv.toFixed(1)})`).join(' | ') + ` | ${g.attempts.toFixed(2)} | ${g.ok ? '통과' : '실패'} |`);
+    L.push(`| ${D.TRAINERS[a.gym.trainer].cls} ${D.TRAINERS[a.gym.trainer].name} (${a.name}) | ${pct(g.first)} | ` + D.STARTERS.map((s) => `${pct(g.perStarter[s].first)} (Lv${g.perStarter[s].lv.toFixed(1)})`).join(' | ') + ` | ${g.attempts.toFixed(2)} | ${g.ok ? '통과' : '실패'} |`);
   });
   L.push('');
   L.push('괄호 안은 첫 도전 때 파티 평균 레벨이다.');

@@ -7,7 +7,10 @@
   var SHINY = {
     naru: true, seol: true, ssaga: true,
     cheese: true, flare: true, leaf: true, zap: true, punch: true, venom: true, sand: true, wing: true,
-    psy: true, moth: true, rock: true, ghost: true, dragon: true, iron: true, ribbon: true
+    psy: true, moth: true, rock: true, ghost: true, dragon: true, iron: true, ribbon: true,
+    naru2: true, seol2: true, ssaga2: true,
+    cheese2: true, flare2: true, leaf2: true, zap2: true, punch2: true, venom2: true, sand2: true, wing2: true,
+    psy2: true, moth2: true, rock2: true, ghost2: true, dragon2: true, iron2: true, ribbon2: true
   };
 
   // 이 스크립트 위치(js/) 기준으로 assets/ 경로를 정한다 — tools/ 하위 페이지에서도 동작

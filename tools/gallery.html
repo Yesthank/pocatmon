@@ -5,7 +5,7 @@
 <title>포캣몬 스프라이트 갤러리</title>
 <style>
   body { margin: 0; background: #20283a; font-family: sans-serif; color: #fff; }
-  .grid { display: grid; grid-template-columns: repeat(10, 128px); gap: 6px; padding: 6px 8px; }
+  .grid { display: grid; grid-template-columns: repeat(12, 128px); gap: 6px; padding: 6px 8px; }
   h2 { font-size: 13px; font-weight: normal; margin: 6px 8px 0; color: #9fb0d0; }
   figure { margin: 0; background: repeating-conic-gradient(#3a4560 0 25%, #2c3550 0 50%) 0 0 / 16px 16px; border-radius: 6px; overflow: hidden; }
   img { width: 128px; height: 128px; display: block; }
@@ -19,8 +19,11 @@
 <div class="grid" id="gs"></div>
 <script src="../js/sprites.js"></script>
 <script>
-  var ids = ['naru', 'seol', 'ssaga', 'cheese', 'flare', 'leaf', 'zap', 'punch', 'venom', 'sand',
-    'wing', 'psy', 'moth', 'rock', 'ghost', 'dragon', 'iron', 'ribbon', 'metal', 'black'];
+  // 진화형(<id>2)은 기본형 바로 뒤에 둔다 — 한 줄 12칸에 기본·진화 6쌍
+  var ids = ['naru', 'naru2', 'seol', 'seol2', 'ssaga', 'ssaga2', 'cheese', 'cheese2', 'flare', 'flare2',
+    'leaf', 'leaf2', 'zap', 'zap2', 'punch', 'punch2', 'venom', 'venom2', 'sand', 'sand2',
+    'wing', 'wing2', 'psy', 'psy2', 'moth', 'moth2', 'rock', 'rock2', 'ghost', 'ghost2',
+    'dragon', 'dragon2', 'iron', 'iron2', 'ribbon', 'ribbon2', 'metal', 'black'];
   window.loaded = 0; window.failed = [];
   window.expected = ids.length + ids.filter(function (id) { return Sprites.hasShiny(id); }).length;
   [false, true].forEach(function (shiny) {
